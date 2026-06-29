@@ -1,0 +1,14 @@
+data/raw/
+data/processed/
+checkpoints/
+outputs/
+wandb/
+*.npy
+*.h5
+*.pt
+*.pth
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+.DS_Store

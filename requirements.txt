@@ -1,0 +1,10 @@
+torch
+torchvision
+numpy
+nibabel
+SimpleITK
+scipy
+scikit-image
+pyyaml
+tqdm
+wandb
