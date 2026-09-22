@@ -4,7 +4,9 @@ Teacher registration: per-pair SVF optimisation, ED slice -> every frame.
     min_v  -LNCC(ED o exp(v/2), I_t o exp(-v/2)) + lam * ||grad v||^2
 
 Symmetric (midpoint) objective as in SyN / symmetric log-demons; it beat the
-one-sided form by ~0.02 ES Dice on the tuning set.  exp(v) still maps ED onto
+one-sided form by ~0.02 ES Dice on the tuning set.  A 21-px LNCC window (vs 9)
+lets the homogeneous blood pool see the endocardial border: ES LV contraction
+captured rose from 72% to 78% (HCM 61% -> 78%) at equal or better Dice.  exp(v) still maps ED onto
 I_t.  v is optimised directly (no network) coarse-to-fine with Adam, all pairs
 of a patient in one batch.  Pairs are independent: each v only enters its own loss
 term.  exp() is the same scaling-and-squaring used by the generator
@@ -42,7 +44,7 @@ def register(
     levels: tuple[int, ...] = (4, 2, 1),
     iters: int = 150,
     lr: float = 0.1,
-    win: int = 9,
+    win: int = 21,
 ) -> tuple[torch.Tensor, dict]:
     """
     moving, fixed: (B, 1, H, W).  Returns the SVF v (B, 2, H, W) in full-resolution

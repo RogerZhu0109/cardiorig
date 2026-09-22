@@ -18,7 +18,7 @@ import torch.nn.functional as F
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.data.acdc import TUNE_PATIENTS, ACDCPatient  # noqa: E402
 from src.teacher import register_batched  # noqa: E402
-from src.utils.metrics import STRUCTURES, dice  # noqa: E402
+from src.utils.metrics import STRUCTURES, dice, lv_areas, lv_captured  # noqa: E402
 from src.utils.svf import integrate, jacobian_det, warp  # noqa: E402
 
 
@@ -33,7 +33,7 @@ def main(args):
     rows = []
     for d in data:
         rows.append(dict(method="identity", lam="", pid=d["pid"], group=d["group"],
-                         **dice(d["ed_mask"], d["es_mask"]), negJ_pct=0.0, absJ1=0.0))
+                         **dice(d["ed_mask"], d["es_mask"]), negJ_pct=0.0, absJ1=0.0, **lv_areas(d, d["ed_mask"])))
     for lam in args.lams:
         t0 = time.time()
         v = register_batched(ed, es, lam=lam, iters=args.iters)
@@ -44,18 +44,20 @@ def main(args):
         jd = jd.cpu().numpy()
         for d, p, j in zip(data, np.split(pred, splits), np.split(jd, splits)):
             rows.append(dict(method="svf_opt", lam=lam, pid=d["pid"], group=d["group"],
-                             **dice(p, d["es_mask"]), negJ_pct=100 * (j <= 0).mean(), absJ1=np.abs(j - 1).mean()))
+                             **dice(p, d["es_mask"]), negJ_pct=100 * (j <= 0).mean(), absJ1=np.abs(j - 1).mean(),
+                             **lv_areas(d, p)))
         print(f"lam {lam}: {len(ed)} pairs in {time.time() - t0:.0f}s")
 
     with open(out / "tune.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=rows[0].keys())
         w.writeheader(); w.writerows(rows)
-    print(f"\n{'method':10s} {'lam':>5s} " + " ".join(f"{s:>5s}" for s in STRUCTURES.values()) + "  mean  negJ%  |J|-1")
+    print(f"\n{'method':10s} {'lam':>5s} " + " ".join(f"{s:>5s}" for s in STRUCTURES.values()) + "  mean  negJ%  |J|-1  LV contraction captured")
     for key in dict.fromkeys((r["method"], r["lam"]) for r in rows):
         sel = [r for r in rows if (r["method"], r["lam"]) == key]
         ds = [np.nanmean([r[s] for r in sel]) for s in STRUCTURES.values()]
         print(f"{key[0]:10s} {str(key[1]):>5s} " + " ".join(f"{x:5.3f}" for x in ds)
-              + f" {np.mean(ds):5.3f} {np.mean([r['negJ_pct'] for r in sel]):6.3f} {np.mean([r['absJ1'] for r in sel]):6.3f}")
+              + f" {np.mean(ds):5.3f} {np.mean([r['negJ_pct'] for r in sel]):6.3f} {np.mean([r['absJ1'] for r in sel]):6.3f}"
+              + f"  {lv_captured(sel):.1%}")
 
 
 if __name__ == "__main__":
