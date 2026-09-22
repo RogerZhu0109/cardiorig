@@ -4,9 +4,6 @@ ACDC cine-CMR loader.
 Produces 2D short-axis (ED_slice, tau, target_slice) pairs for phase-conditioned
 deformation generation.  tau is the ED-relative, cyclic, normalized cardiac phase:
     tau = ((t - ED) mod N) / N,  ED -> 0.0, ES -> ~0.3-0.45.
-Note ACDC prospective gating truncates the last 5-10% of the cycle in some cases,
-so tau never reaches 1.0 exactly.
-
 Per-patient files (data/raw/ACDC/{training,testing}/patientXXX/):
     Info.cfg                      ED / ES (1-based frame index), Group, Height, Weight, NbFrame
     patientXXX_4d.nii.gz          (X, Y, Z, T) int16 cine, no temporal spacing (pixdim[4]=1)
@@ -23,6 +20,9 @@ from scipy.ndimage import zoom
 
 LABELS = {0: "background", 1: "RV", 2: "MYO", 3: "LV"}
 GROUPS = ("NOR", "MINF", "DCM", "HCM", "RV")
+# Teacher hyper-parameter tuning set: first 4 training patients of each group
+# (ACDC training is ordered in blocks of 20: DCM, HCM, MINF, NOR, RV).
+TUNE_PATIENTS = [f"patient{b + i:03d}" for b in (1, 21, 41, 61, 81) for i in range(4)]
 
 
 @dataclass
@@ -140,6 +140,50 @@ class ACDCPatient:
                     target=cine[t, z],
                     es_mask=es_mask[z] if (es_mask is not None and t == self.info.es) else None,
                 )
+
+
+    def processed(self, size: int = 128, target_mm: float = 1.5) -> dict:
+        """
+        Whole sequence resampled to target_mm, cropped to size x size around the
+        ED-mask centroid (one centre per patient), keeping only slices whose ED
+        mask has foreground.
+            cine:    (T, Z', size, size) float32 in [0, 1]
+            ed_mask, es_mask: (Z', size, size) uint8
+            z:       (Z',) kept slice indices;  tau: (T,) phase per frame
+        """
+        cine = self.cine()
+        lo, hi = np.percentile(cine, [1, 99])
+        cine = np.clip((cine - lo) / max(hi - lo, 1e-6), 0, 1).astype(np.float32)
+        cine = self.resample_inplane(cine, target_mm)
+        ed_mask = self.resample_inplane(self.mask(self.info.ed), target_mm, order=0)
+        es_mask = self.resample_inplane(self.mask(self.info.es), target_mm, order=0)
+        z = np.nonzero((ed_mask > 0).any(axis=(1, 2)))[0]
+        _, yy, xx = np.nonzero(ed_mask > 0)
+        center = (int(round(yy.mean())), int(round(xx.mean())))
+        n = self.info.n_frames
+        return dict(
+            pid=self.pid,
+            group=self.info.group,
+            ed=self.info.ed,
+            es=self.info.es,
+            tau=np.array([phase_tau(t, self.info.ed, n) for t in range(n)], np.float32),
+            z=z,
+            center=np.array(center),
+            cine=center_crop(cine[:, z], center, size),
+            ed_mask=center_crop(ed_mask[z], center, size),
+            es_mask=center_crop(es_mask[z], center, size),
+        )
+
+
+def center_crop(vol: np.ndarray, center: tuple[int, int], size: int) -> np.ndarray:
+    """Crop the last two axes to size x size around center, zero-padding outside."""
+    h, w = vol.shape[-2:]
+    y0, x0 = center[0] - size // 2, center[1] - size // 2
+    out = np.zeros(vol.shape[:-2] + (size, size), vol.dtype)
+    sy, sx = max(y0, 0), max(x0, 0)
+    ey, ex = min(y0 + size, h), min(x0 + size, w)
+    out[..., sy - y0:ey - y0, sx - x0:ex - x0] = vol[..., sy:ey, sx:ex]
+    return out
 
 
 def dataset_summary(root: Path) -> list[PatientInfo]:
