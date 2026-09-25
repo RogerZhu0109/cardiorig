@@ -1,6 +1,6 @@
 """
 ED -> ES evaluation. Inputs per patient: ED slices, ED labels, tau_ES; ES labels only score.
-Default split is val. Run --split testing once, for the final numbers, after every choice is frozen.
+Default split is val (train = generalisation-gap diagnostic). Run --split testing once, for the final numbers, after every choice is frozen.
 Per-patient rows go to CSV: method, nfe, sample (k = single sample k; "mean" = log-Euclidean
 mean, i.e. the average of the K SVFs). References: identity (no motion) and teacher (registered
 to the true ES frame, so it sees the target: an upper bound, not a competitor).
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--checkpoints", nargs="*", default=[])
     p.add_argument("--cache", default="data/processed/acdc")
-    p.add_argument("--split", choices=["val", "testing"], default="val")
+    p.add_argument("--split", choices=["train", "val", "testing"], default="val")
     p.add_argument("--nfe", type=int, nargs="+", default=[1, 2, 4, 8])
     p.add_argument("--samples", type=int, default=5)
     p.add_argument("--out", default=None)
