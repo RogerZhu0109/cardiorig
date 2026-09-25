@@ -2,7 +2,8 @@
 Train the SVF generator on teacher targets: flow matching (fm) or the regression baseline.
 Only ACDC training patients are read: 90 train, 10 val (src/data/cache.py VAL_PATIENTS) for
 monitoring. The test split is never read. The saved model is the EMA after a fixed iteration
-budget; there is no checkpoint selection.
+budget; there is no checkpoint selection. out/last.pt holds the full training state, and a run
+restarted with the same --out resumes from it (Colab VMs can disappear mid-run).
 Usage: python scripts/train.py --objective fm --out checkpoints/fm_s0
 """
 import argparse
@@ -36,6 +37,7 @@ def validate(model, objective, sigma, patients, device, nfe):
 
 def main(args):
     torch.manual_seed(args.seed)
+    torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     train_pts = load(args.cache, "train")
@@ -53,8 +55,19 @@ def main(args):
     gen = torch.Generator().manual_seed(args.seed)
     amp = args.device == "cuda"
 
+    start = 1
+    if (out / "last.pt").exists():
+        ck = torch.load(out / "last.pt", map_location=args.device, weights_only=False)
+        model.load_state_dict(ck["train_model"]), ema.load_state_dict(ck["model"])
+        opt.load_state_dict(ck["opt"]), sched.load_state_dict(ck["sched"])
+        gen.set_state(ck["gen"].cpu()), torch.set_rng_state(ck["rng"].cpu())
+        if amp:
+            torch.cuda.set_rng_state(ck["cuda_rng"].cpu())
+        start = ck["iter"] + 1
+        print(f"resumed from iter {ck['iter']}", flush=True)
+
     t0, run = time.time(), 0.0
-    for it in range(1, args.iters + 1):
+    for it in range(start, args.iters + 1):
         ed, tau, v = train.sample(args.batch, gen)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp):
             l = loss(model, args.objective, ed, tau, v / sigma)
@@ -65,20 +78,23 @@ def main(args):
         sched.step()
         decay = min(args.ema, (1 + it) / (10 + it))
         with torch.no_grad():
-            for pe, p in zip(ema.parameters(), model.parameters()):
-                pe.lerp_(p, 1 - decay)
-        run += l.item()
+            torch._foreach_lerp_(list(ema.parameters()), list(model.parameters()), 1 - decay)
+        run += l.detach()
 
         if it % args.log_every == 0:
-            print(f"it {it} loss {run / args.log_every:.4f} lr {sched.get_last_lr()[0]:.2e} "
-                  f"{it / (time.time() - t0):.1f} it/s", flush=True)
+            print(f"it {it} loss {run.item() / args.log_every:.4f} lr {sched.get_last_lr()[0]:.2e} "
+                  f"{(it - start + 1) / (time.time() - t0):.1f} it/s", flush=True)
             run = 0.0
         if it % args.val_every == 0 or it == args.iters:
             log = dict(iter=it, **validate(ema, args.objective, sigma, val, args.device, args.val_nfe))
             print(json.dumps(log), flush=True)
             with open(out / "log.jsonl", "a") as f:
                 f.write(json.dumps(log) + "\n")
-            torch.save(dict(model=ema.state_dict(), sigma=sigma, args=vars(args), iter=it), out / "last.pt")
+            torch.save(dict(model=ema.state_dict(), sigma=sigma, args=vars(args), iter=it,
+                            train_model=model.state_dict(), opt=opt.state_dict(), sched=sched.state_dict(),
+                            gen=gen.get_state(), rng=torch.get_rng_state(),
+                            cuda_rng=torch.cuda.get_rng_state() if amp else None), out / "tmp.pt")
+            (out / "tmp.pt").replace(out / "last.pt")
 
 
 if __name__ == "__main__":
