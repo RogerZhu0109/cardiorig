@@ -152,7 +152,8 @@ class ACDCPatient:
             z:       (Z',) kept slice indices;  tau: (T,) phase per frame
         """
         cine = self.cine()
-        lo, hi = np.percentile(cine, [1, 99])
+        # Percentiles of the ED frame only: the model input must not depend on target frames.
+        lo, hi = np.percentile(cine[self.info.ed], [1, 99])
         cine = np.clip((cine - lo) / max(hi - lo, 1e-6), 0, 1).astype(np.float32)
         cine = self.resample_inplane(cine, target_mm)
         ed_mask = self.resample_inplane(self.mask(self.info.ed), target_mm, order=0)
