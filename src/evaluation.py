@@ -1,0 +1,28 @@
+"""
+ED -> ES evaluation of one patient's slice stack, shared by train.py (val monitoring)
+and evaluate.py. Only the ED slices, ED labels and tau_ES are inputs; ES labels are
+used for scoring only.
+"""
+from __future__ import annotations
+
+import torch
+import torch.nn.functional as F
+
+from src.utils.metrics import dice, lv_areas
+from src.utils.svf import integrate, jacobian_det, warp
+
+
+def score(d: dict, v: torch.Tensor) -> dict:
+    """ES metrics of the SVF stack v (Z, 2, S, S) applied to the ED labels."""
+    u = integrate(v)
+    onehot = F.one_hot(torch.from_numpy(d["ed_mask"]).long(), 4).permute(0, 3, 1, 2).float().to(v.device)
+    pred = warp(onehot, u).argmax(1).cpu().numpy()
+    jd = jacobian_det(u)
+    return dict(**{f"dice_{k}": x for k, x in dice(pred, d["es_mask"]).items()},
+                folded_pct=100 * (jd <= 0).float().mean().item(), **lv_areas(d, pred))
+
+
+def es_inputs(d: dict, device) -> tuple[torch.Tensor, torch.Tensor]:
+    ed = torch.from_numpy(d["cine"][d["ed"]][:, None].astype("float32")).to(device)
+    tau = torch.full((len(ed),), float(d["tau"][d["es"]]), device=device)
+    return ed, tau

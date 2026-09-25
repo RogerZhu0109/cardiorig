@@ -9,3 +9,5 @@ pyyaml
 tqdm
 wandb
 matplotlib
+pandas
+huggingface_hub
