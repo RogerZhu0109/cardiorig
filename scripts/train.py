@@ -18,6 +18,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.data.augment import augment  # noqa: E402
 from src.data.cache import Pairs, load  # noqa: E402
 from src.evaluation import es_inputs, score  # noqa: E402
 from src.models.flow import loss, sample  # noqa: E402
@@ -69,6 +70,8 @@ def main(args):
     t0, run = time.time(), 0.0
     for it in range(start, args.iters + 1):
         ed, tau, v = train.sample(args.batch, gen)
+        if args.augment:
+            ed, v = augment(ed, v, gen)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp):
             l = loss(model, args.objective, ed, tau, v / sigma)
         opt.zero_grad(set_to_none=True)
@@ -108,6 +111,7 @@ if __name__ == "__main__":
     p.add_argument("--warmup", type=int, default=1000)
     p.add_argument("--ema", type=float, default=0.999)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--augment", action="store_true", help="similarity + intensity augmentation (src/data/augment.py)")
     p.add_argument("--val_nfe", type=int, default=4)
     p.add_argument("--log_every", type=int, default=500)
     p.add_argument("--val_every", type=int, default=5000)
