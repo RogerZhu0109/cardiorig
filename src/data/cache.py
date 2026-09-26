@@ -48,13 +48,16 @@ def load(root: Path, split: str, svf: bool = True, features: Path | None = None)
 class Pairs:
     """All (ED slice, tau, teacher SVF) pairs, i.e. every kept slice x every non-ED frame, held on device."""
 
-    def __init__(self, patients: list[dict], device: str | torch.device):
-        eds, svfs, taus, ref, n = [], [], [], [], 0
+    def __init__(self, patients: list[dict], device: str | torch.device, targets: bool = False):
+        """targets: also hold each pair's real target frame (image-consistency fine-tuning)."""
+        eds, svfs, taus, ref, tgts, n = [], [], [], [], [], 0
         for d in patients:
             frames = [t for t in range(len(d["tau"])) if t != d["ed"]]
             z = len(d["z"])
             eds.append(d["cine"][d["ed"]])
             svfs.append(d["svf"][frames].reshape(-1, *d["svf"].shape[2:]))  # frame-major
+            if targets:
+                tgts.append(d["cine"][frames].reshape(-1, *d["cine"].shape[2:]))  # same order as svfs
             taus.append(np.repeat(d["tau"][frames], z))
             ref.append(n + np.tile(np.arange(z), len(frames)))
             n += z
@@ -62,6 +65,7 @@ class Pairs:
         self.svf = torch.from_numpy(np.concatenate(svfs)).to(device)  # (pairs, 2, S, S) f16
         self.tau = torch.from_numpy(np.concatenate(taus)).to(device)
         self.ref = torch.from_numpy(np.concatenate(ref)).to(device)
+        self.target = torch.from_numpy(np.concatenate(tgts)[:, None]).to(device) if targets else None  # like svf
         self.feat = self.cls = None
         if "feat" in patients[0]:  # per slice, like self.ed
             self.feat = torch.from_numpy(np.concatenate([d["feat"] for d in patients])).to(device)
@@ -76,9 +80,11 @@ class Pairs:
         sq = sum(self.svf[i:i + chunk].float().pow(2).sum().item() for i in range(0, len(self), chunk))
         return (sq / self.svf.numel()) ** 0.5
 
-    def sample(self, n: int, generator: torch.Generator | None = None):
-        """Uniform over pairs. Returns ed (n,1,S,S), tau (n,), svf (n,2,S,S), cond (dict: feat, cls or empty), float32."""
+    def sample(self, n: int, generator: torch.Generator | None = None, target: bool = False):
+        """Uniform over pairs. Returns ed (n,1,S,S), tau (n,), svf (n,2,S,S), cond (dict: feat, cls or empty), float32;
+        with target=True also the real target frame (n,1,S,S) last."""
         idx = torch.randint(len(self), (n,), generator=generator).to(self.svf.device)
         s = self.ref[idx]
         cond = {} if self.feat is None else dict(feat=self.feat[s].float(), cls=self.cls[s].float())
-        return self.ed[s].float(), self.tau[idx].float(), self.svf[idx].float(), cond
+        out = self.ed[s].float(), self.tau[idx].float(), self.svf[idx].float(), cond
+        return (*out, self.target[idx].float()) if target else out

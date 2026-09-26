@@ -34,5 +34,12 @@ def test_pairs_match_slice_and_phase():
         assert cond["feat"][i, 0, 0, 0] == 100 * seed[i] + z[i] and cond["cls"][i, 0] == seed[i]  # same slice
 
 
+def test_target_frame_matches_svf():
+    """The real target frame is the frame the teacher SVF was registered to (same patient, t, z)."""
+    pairs = Pairs([fake_patient(1), fake_patient(2, T=4, Z=2)], "cpu", targets=True)
+    ed, tau, v, cond, target = pairs.sample(500, torch.Generator().manual_seed(0), target=True)
+    assert torch.equal(target[:, 0, 0, 0], v[:, 0, 0, 0])
+
+
 def test_val_split():
     assert len(VAL_PATIENTS) == 10 and not set(VAL_PATIENTS) & set(TUNE_PATIENTS)
