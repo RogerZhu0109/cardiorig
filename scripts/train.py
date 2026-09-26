@@ -30,8 +30,8 @@ def validate(model, objective, sigma, patients, device, nfe):
     g = torch.Generator().manual_seed(0)
     rows = []
     for d in patients:
-        ed, tau = es_inputs(d, device)
-        rows.append(score(d, sample(model, objective, ed, tau, sigma, nfe, g)))
+        ed, tau, cond = es_inputs(d, device)
+        rows.append(score(d, sample(model, objective, ed, tau, sigma, nfe, g, **cond)))
     return dict(val_dice=float(np.nanmean([[r[f"dice_{k}"] for k in STRUCTURES.values()] for r in rows])),
                 val_folded_pct=float(np.mean([r["folded_pct"] for r in rows])))
 
@@ -41,14 +41,14 @@ def main(args):
     torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    train_pts = load(args.cache, "train")
-    val = load(args.cache, "val", svf=False)
+    train_pts = load(args.cache, "train", features=args.features)
+    val = load(args.cache, "val", svf=False, features=args.features)
     train = Pairs(train_pts, args.device)
     del train_pts
     sigma = train.rms()
     print(f"{len(train)} pairs from train, {len(val)} val patients, sigma {sigma:.3f} px, device {args.device}", flush=True)
 
-    model = UNet().to(args.device)
+    model = UNet(cond=bool(args.features)).to(args.device)
     ema = copy.deepcopy(model).eval().requires_grad_(False)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
     sched = torch.optim.lr_scheduler.LambdaLR(
@@ -69,11 +69,13 @@ def main(args):
 
     t0, run = time.time(), 0.0
     for it in range(start, args.iters + 1):
-        ed, tau, v = train.sample(args.batch, gen)
-        if args.augment:
+        ed, tau, v, cond = train.sample(args.batch, gen)
+        if args.augment and cond:
+            ed, v, cond["feat"] = augment(ed, v, gen, feat=cond["feat"])
+        elif args.augment:
             ed, v = augment(ed, v, gen)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp):
-            l = loss(model, args.objective, ed, tau, v / sigma)
+            l = loss(model, args.objective, ed, tau, v / sigma, **cond)
         opt.zero_grad(set_to_none=True)
         l.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -112,6 +114,7 @@ if __name__ == "__main__":
     p.add_argument("--ema", type=float, default=0.999)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--augment", action="store_true", help="similarity + intensity augmentation (src/data/augment.py)")
+    p.add_argument("--features", default=None, help="CineMA feature root (scripts/cinema_features.py); enables conditioning")
     p.add_argument("--val_nfe", type=int, default=4)
     p.add_argument("--log_every", type=int, default=500)
     p.add_argument("--val_every", type=int, default=5000)

@@ -5,6 +5,9 @@ The noisy SVF w (2 ch) and the ED slice (1 ch) are concatenated at the input.
 Flow time t (sinusoidal) and cardiac phase tau (cyclic Fourier features, so
 tau = 0.98 sits next to tau = 0) are embedded, summed, and enter every residual
 block as a FiLM scale/shift.
+Optional (cond=True): frozen CineMA features of the ED stack, a per-slice (768, 12, 12) map
+added at the bottleneck and a global cls token added to the embedding; both projections are
+zero-initialised, so training starts from the unconditioned network.
 """
 from __future__ import annotations
 
@@ -44,9 +47,14 @@ class ResBlock(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, ch: tuple[int, ...] = (32, 64, 128, 256), emb: int = 256, n_freq: int = 4):
+    def __init__(self, ch: tuple[int, ...] = (32, 64, 128, 256), emb: int = 256, n_freq: int = 4, cond: bool = False):
         super().__init__()
-        self.emb, self.n_freq = emb, n_freq
+        self.emb, self.n_freq, self.cond = emb, n_freq, cond
+        if cond:
+            self.feat_proj = nn.Sequential(nn.GroupNorm(1, 768), nn.Conv2d(768, ch[-1], 1))
+            self.cls_mlp = nn.Sequential(nn.LayerNorm(768), nn.Linear(768, emb), nn.SiLU(), nn.Linear(emb, emb))
+            for m in (self.feat_proj[-1], self.cls_mlp[-1]):
+                nn.init.zeros_(m.weight), nn.init.zeros_(m.bias)
         self.t_mlp = nn.Sequential(nn.Linear(emb, emb), nn.SiLU(), nn.Linear(emb, emb))
         self.tau_mlp = nn.Sequential(nn.Linear(2 * n_freq, emb), nn.SiLU(), nn.Linear(emb, emb))
         self.inp = nn.Conv2d(3, ch[0], 3, padding=1)
@@ -59,14 +67,18 @@ class UNet(nn.Module):
         self.out = nn.Sequential(nn.GroupNorm(8, ch[0]), nn.SiLU(), nn.Conv2d(ch[0], 2, 3, padding=1))
         nn.init.zeros_(self.out[-1].weight), nn.init.zeros_(self.out[-1].bias)
 
-    def forward(self, w, t, ed, tau):
+    def forward(self, w, t, ed, tau, feat=None, cls=None):
         e = self.t_mlp(time_embedding(t, self.emb)) + self.tau_mlp(phase_features(tau, self.n_freq))
+        if self.cond:
+            e = e + self.cls_mlp(cls)
         h, skips = self.inp(torch.cat([w, ed], dim=1)), []
         for i, block in enumerate(self.down):
             h = block(h, e)
             skips.append(h)
             if i < len(self.pool):
                 h = self.pool[i](h)
+        if self.cond:
+            h = h + F.interpolate(self.feat_proj(feat), size=h.shape[-2:], mode="bilinear", align_corners=False)
         for block in self.mid:
             h = block(h, e)
         for i in reversed(range(len(self.up))):

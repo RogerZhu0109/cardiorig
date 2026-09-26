@@ -6,7 +6,9 @@ isotropic scale, shift) is applied consistently: M'(p) = M(A^-1 p + b), and the 
 pushed forward, v'(p) = A v(A^-1 p + b). Then exp(v') = T o exp(v) o T^-1, so
 M' o exp(v') is the transformed target and the pair stays an exact training example.
 No flips: they would reverse the direction of LV twist. Intensity augmentation
-(gamma, contrast, brightness, noise) acts on the ED image only.
+(gamma, contrast, brightness, noise) acts on the ED image only. CineMA feature maps, if
+given, are resampled with the same transform (an approximation: ViT features are not exactly
+equivariant); the cls token is left unchanged.
 """
 from __future__ import annotations
 
@@ -27,12 +29,16 @@ def random_similarity(n: int, size: int, rot_deg: float, scale: float, shift_px:
     return A, b
 
 
-def apply_similarity(ed: torch.Tensor, v: torch.Tensor, A: torch.Tensor, b: torch.Tensor):
+def apply_similarity(ed: torch.Tensor, v: torch.Tensor, A: torch.Tensor, b: torch.Tensor, feat=None):
     A, b = A.to(ed.device), b.to(ed.device)
     theta = torch.cat([torch.linalg.inv(A), b[:, :, None]], dim=2)
     grid = F.affine_grid(theta, list(ed.shape), align_corners=True)
     ed = F.grid_sample(ed, grid, mode="bilinear", padding_mode="zeros", align_corners=True)
     v = F.grid_sample(v, grid, mode="bilinear", padding_mode="border", align_corners=True)
+    if feat is not None:
+        g = F.affine_grid(theta, list(feat.shape), align_corners=False)  # same field of view, coarse grid
+        feat = F.grid_sample(feat, g, mode="bilinear", padding_mode="border", align_corners=False)
+        return ed, torch.einsum("bij,bjhw->bihw", A, v), feat
     return ed, torch.einsum("bij,bjhw->bihw", A, v)
 
 
@@ -44,7 +50,8 @@ def intensity(ed: torch.Tensor, generator: torch.Generator | None = None) -> tor
     return (ed + 0.01 * (1 + u[:, 3]) * noise).clamp(0, 1)  # noise std in [0, 0.02]
 
 
-def augment(ed, v, generator=None, rot_deg=30.0, scale=0.1, shift_px=8.0):
+def augment(ed, v, generator=None, rot_deg=30.0, scale=0.1, shift_px=8.0, feat=None):
+    """Returns (ed, v) or, with feat, (ed, v, feat)."""
     A, b = random_similarity(len(ed), ed.shape[-1], rot_deg, scale, shift_px, generator)
-    ed, v = apply_similarity(ed, v, A, b)
-    return intensity(ed, generator), v
+    out = apply_similarity(ed, v, A, b, feat)
+    return (intensity(out[0], generator), *out[1:])

@@ -51,7 +51,7 @@ def summarise(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main(args):
-    patients = load(args.cache, args.split)
+    patients = load(args.cache, args.split, features=args.features)
     rows = []
     for d in patients:
         base = dict(pid=str(d["pid"]), group=str(d["group"]), ms_per_slice=np.nan)
@@ -62,20 +62,22 @@ def main(args):
 
     for path in args.checkpoints:
         ck = torch.load(path, map_location=args.device)
-        model = UNet().to(args.device).eval()
+        model = UNet(cond=bool(ck["args"].get("features"))).to(args.device).eval()
+        assert not model.cond or args.features, f"{path} needs --features"
         model.load_state_dict(ck["model"])
         obj, sigma, name = ck["args"]["objective"], ck["sigma"], Path(path).parent.name
         n_samples = 1 if obj == "regress" else args.samples
         for nfe in ([1] if obj == "regress" else args.nfe):
             for d in patients:
-                ed, tau = es_inputs(d, args.device)
-                sample(model, obj, ed, tau, sigma, nfe)  # warm-up for timing
+                ed, tau, cond = es_inputs(d, args.device)
+                cond = cond if model.cond else {}
+                sample(model, obj, ed, tau, sigma, nfe, **cond)  # warm-up for timing
                 vs = []
                 for k in range(n_samples):
                     g = torch.Generator().manual_seed(1000 * k + int(str(d["pid"])[-3:]))
                     sync(args.device)
                     t0 = time.perf_counter()
-                    v = sample(model, obj, ed, tau, sigma, nfe, g)
+                    v = sample(model, obj, ed, tau, sigma, nfe, g, **cond)
                     warp(ed, integrate(v))
                     sync(args.device)
                     ms = 1000 * (time.perf_counter() - t0) / len(ed)
@@ -101,6 +103,7 @@ if __name__ == "__main__":
     p.add_argument("--checkpoints", nargs="*", default=[])
     p.add_argument("--cache", default="data/processed/acdc")
     p.add_argument("--split", choices=["train", "val", "testing"], default="val")
+    p.add_argument("--features", default=None, help="CineMA feature root, needed for checkpoints trained with --features")
     p.add_argument("--nfe", type=int, nargs="+", default=[1, 2, 4, 8])
     p.add_argument("--samples", type=int, default=5)
     p.add_argument("--out", default=None)

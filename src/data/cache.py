@@ -29,13 +29,19 @@ def split_ids(root: Path, split: str) -> list[str]:
     return ids
 
 
-def load(root: Path, split: str, svf: bool = True) -> list[dict]:
-    folder = Path(root) / ("testing" if split == "testing" else "training")
+def load(root: Path, split: str, svf: bool = True, features: Path | None = None) -> list[dict]:
+    """features: optional root of scripts/cinema_features.py output (ED-stack CineMA features)."""
+    sub = "testing" if split == "testing" else "training"
     keys = ["pid", "group", "ed", "es", "tau", "z", "cine", "ed_mask", "es_mask"] + (["svf"] if svf else [])
     out = []
     for pid in split_ids(root, split):
-        with np.load(folder / f"{pid}.npz") as f:
-            out.append({k: f[k] for k in keys})
+        with np.load(Path(root) / sub / f"{pid}.npz") as f:
+            d = {k: f[k] for k in keys}
+        if features:
+            with np.load(Path(features) / sub / f"{pid}.npz") as f:
+                d["feat"], d["cls"] = f["feat"], f["cls"]
+            assert len(d["feat"]) == len(d["z"]), pid
+        out.append(d)
     return out
 
 
@@ -56,6 +62,11 @@ class Pairs:
         self.svf = torch.from_numpy(np.concatenate(svfs)).to(device)  # (pairs, 2, S, S) f16
         self.tau = torch.from_numpy(np.concatenate(taus)).to(device)
         self.ref = torch.from_numpy(np.concatenate(ref)).to(device)
+        self.feat = self.cls = None
+        if "feat" in patients[0]:  # per slice, like self.ed
+            self.feat = torch.from_numpy(np.concatenate([d["feat"] for d in patients])).to(device)
+            self.cls = torch.from_numpy(np.concatenate([np.repeat(d["cls"][None], len(d["z"]), 0)
+                                                        for d in patients])).to(device)
 
     def __len__(self):
         return len(self.svf)
@@ -66,6 +77,8 @@ class Pairs:
         return (sq / self.svf.numel()) ** 0.5
 
     def sample(self, n: int, generator: torch.Generator | None = None):
-        """Uniform over pairs. Returns ed (n,1,S,S), tau (n,), svf (n,2,S,S), all float32."""
+        """Uniform over pairs. Returns ed (n,1,S,S), tau (n,), svf (n,2,S,S), cond (dict: feat, cls or empty), float32."""
         idx = torch.randint(len(self), (n,), generator=generator).to(self.svf.device)
-        return self.ed[self.ref[idx]].float(), self.tau[idx].float(), self.svf[idx].float()
+        s = self.ref[idx]
+        cond = {} if self.feat is None else dict(feat=self.feat[s].float(), cls=self.cls[s].float())
+        return self.ed[s].float(), self.tau[idx].float(), self.svf[idx].float(), cond

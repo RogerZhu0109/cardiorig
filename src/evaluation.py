@@ -22,7 +22,12 @@ def score(d: dict, v: torch.Tensor) -> dict:
                 folded_pct=100 * (jd <= 0).float().mean().item(), **lv_areas(d, pred))
 
 
-def es_inputs(d: dict, device) -> tuple[torch.Tensor, torch.Tensor]:
+def es_inputs(d: dict, device) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    """ED slices, tau_ES, and the CineMA conditioning (empty unless the patient has features)."""
     ed = torch.from_numpy(d["cine"][d["ed"]][:, None].astype("float32")).to(device)
     tau = torch.full((len(ed),), float(d["tau"][d["es"]]), device=device)
-    return ed, tau
+    cond = {}
+    if "feat" in d:
+        cond = dict(feat=torch.from_numpy(d["feat"].astype("float32")).to(device),
+                    cls=torch.from_numpy(d["cls"].astype("float32")).to(device)[None].expand(len(ed), -1))
+    return ed, tau, cond
