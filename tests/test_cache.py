@@ -36,3 +36,12 @@ def test_pairs_match_slice_and_phase():
 
 def test_val_split():
     assert len(VAL_PATIENTS) == 10 and not set(VAL_PATIENTS) & set(TUNE_PATIENTS)
+
+
+def test_folds_partition_patients_evenly():
+    from src.data.cache import fold_patients
+    folds = [fold_patients(k) for k in range(5)]
+    assert sorted(sum(folds, [])) == [f"patient{i:03d}" for i in range(1, 101)]
+    for fold in folds:
+        assert len(fold) == 20 and all(sum((int(p[-3:]) - 1) // 20 == g for p in fold) == 4 for g in range(5))
+

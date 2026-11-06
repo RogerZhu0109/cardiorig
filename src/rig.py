@@ -18,6 +18,7 @@ SECTORS = {"basal": 6, "mid": 6, "apical": 4}
 OFFSET = {"basal": 0, "mid": 6, "apical": 12}  # first segment of each ring
 RV_SECTORS = 4
 SHARED = 2 + 3 * 16 + 2 * RV_SECTORS  # patient-level motions: translation, LV segments, RV sectors
+TOKENS = 16 + RV_SECTORS + 1  # LV segments, RV sectors, translation
 BIN_CENTRES = (np.arange(BINS) + 0.5) * TAU / BINS
 
 
@@ -188,3 +189,51 @@ def time_basis(tau: np.ndarray, harmonics: int = 2) -> np.ndarray:
     """Smooth cyclic curves that vanish at ED, (frames, 2 * harmonics)."""
     w = TAU * np.outer(tau, np.arange(1, harmonics + 1))
     return np.concatenate([1 - np.cos(w), np.sin(w)], 1)
+
+
+def patient_fields(mask: np.ndarray) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+    """Per slice of an ED stack: decoder fields, their patient-level slots, and the fit region."""
+    septum, where = septal_angle(mask), positions(mask)
+    fields, slots, regions = [], [], []
+    for z, m in enumerate(mask):
+        pos = where.get(z, "mid")
+        fields.append(basis(m, septum, SECTORS[pos]))
+        slots.append(shared_slots(len(fields[-1]), pos))
+        regions.append(roi(m))
+    return fields, slots, regions
+
+
+def fit_shared(fields: list[np.ndarray], slots: list[np.ndarray], regions: list[np.ndarray],
+               motion: np.ndarray) -> np.ndarray:
+    """Least-squares motions shared across slices, (SHARED, F), from motion (F, Z, 2, H, W)."""
+    normal, moment = np.zeros((SHARED, SHARED)), np.zeros((SHARED, len(motion)))
+    for z, (b, idx, region) in enumerate(zip(fields, slots, regions)):
+        a = b[:, :, region].reshape(len(b), -1)
+        normal[np.ix_(idx, idx)] += a @ a.T
+        moment[idx] += a @ motion[:, z][:, :, region].reshape(len(motion), -1).T
+    return np.linalg.lstsq(normal, moment, rcond=1e-6)[0]
+
+
+def fit_compact(d: dict, harmonics: int = 2) -> np.ndarray:
+    """Compact rig numbers of a cached patient, (SHARED, 2 * harmonics)."""
+    frames = [t for t in range(len(d["tau"])) if t != int(d["ed"])]
+    shared = fit_shared(*patient_fields(d["ed_mask"]), d["svf"][frames].astype(np.float32))
+    return shared @ np.linalg.pinv(time_basis(d["tau"][frames], harmonics)).T
+
+
+def decode(numbers: np.ndarray, tau: float, fields: list[np.ndarray], slots: list[np.ndarray]) -> np.ndarray:
+    """SVF stack (Z, 2, H, W) at phase tau from compact numbers (SHARED, 2 * harmonics)."""
+    c = numbers @ time_basis(np.array([tau]), numbers.shape[1] // 2)[0]
+    return np.stack([np.tensordot(c[idx], b, 1) for b, idx in zip(fields, slots)])
+
+
+def token_maps(fields: list[np.ndarray], slots: list[np.ndarray]) -> np.ndarray:
+    """Where each token lives, (Z, TOKENS, H, W): support of its fields; the last token is translation."""
+    h, w = fields[0].shape[-2:]
+    maps = np.zeros((len(fields), TOKENS, h, w), np.float32)
+    for z, (b, idx) in enumerate(zip(fields, slots)):
+        norm = np.linalg.norm(b, axis=1)
+        for field, slot in zip(norm, idx):
+            token = TOKENS - 1 if slot < 2 else (slot - 2) // 3 if slot < 50 else 16 + (slot - 50) // 2
+            maps[z, token] = np.maximum(maps[z, token], field)
+    return maps

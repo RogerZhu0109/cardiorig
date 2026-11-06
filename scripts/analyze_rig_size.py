@@ -14,7 +14,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.data.cache import VAL_PATIENTS, load  # noqa: E402
 from src.evaluation import score  # noqa: E402
-from src.rig import SECTORS, SHARED, basis, positions, roi, septal_angle, shared_slots, time_basis  # noqa: E402
+from src.rig import fit_shared, patient_fields, time_basis  # noqa: E402
 
 
 def smooth(tau: np.ndarray, harmonics: int) -> np.ndarray:
@@ -28,20 +28,13 @@ def fit(d: dict) -> list[dict]:
     frames = [t for t in range(len(d["tau"])) if t != int(d["ed"])]
     es = frames.index(int(d["es"]))
     motion, tau = d["svf"][frames].astype(np.float32), d["tau"][frames]  # (F, Z, 2, H, W)
-    mask, septum, where = d["ed_mask"], septal_angle(d["ed_mask"]), positions(d["ed_mask"])
-    fields, regions, slots, per_slice = [], [], [], []
-    normal, moment = np.zeros((SHARED, SHARED)), np.zeros((SHARED, len(frames)))
-    for z, m in enumerate(mask):
-        b, region = basis(m, septum, SECTORS[where.get(z, "mid")]), roi(m)
-        a = b[:, :, region].reshape(len(b), -1)
+    fields, slots, regions = patient_fields(d["ed_mask"])
+    per_slice = []
+    for z, (b, region) in enumerate(zip(fields, regions)):
         y = motion[:, z][:, :, region].reshape(len(frames), -1)
-        idx = shared_slots(len(b), where.get(z, "mid"))
-        normal[np.ix_(idx, idx)] += a @ a.T
-        moment[idx] += a @ y.T
-        per_slice.append(np.linalg.lstsq(a.T, y.T, rcond=1e-6)[0])  # (motions, frames)
-        fields.append(b), regions.append(region), slots.append(idx)
-    shared = np.linalg.lstsq(normal, moment, rcond=1e-6)[0]
-    used = int((np.abs(normal).sum(1) > 0).sum())
+        per_slice.append(np.linalg.lstsq(b[:, :, region].reshape(len(b), -1).T, y.T, rcond=1e-6)[0])  # (motions, frames)
+    shared = fit_shared(fields, slots, regions, motion)
+    used = len(set(np.concatenate(slots).tolist()))
     two, three = smooth(tau, 2), smooth(tau, 3)
     variants = {
         "per slice, per frame": ([c for c in per_slice], sum(map(len, per_slice)) * len(frames)),

@@ -18,23 +18,33 @@ import torch
 VAL_PATIENTS = [f"patient{b + i:03d}" for b in (1, 21, 41, 61, 81) for i in (18, 19)]
 
 
-def split_ids(root: Path, split: str) -> list[str]:
+def fold_patients(fold: int) -> list[str]:
+    """Held-out patients of a cross-validation fold: 4 per pathology block, every patient once in folds 0-4."""
+    rng, out = np.random.default_rng(0), []
+    for b in range(1, 101, 20):
+        out += [f"patient{b + i:03d}" for i in rng.permutation(20)[fold * 4:(fold + 1) * 4]]
+    return sorted(out)
+
+
+def split_ids(root: Path, split: str, fold: int | None = None) -> list[str]:
     folder = "testing" if split == "testing" else "training"
     ids = sorted(p.stem for p in (Path(root) / folder).glob("patient*.npz"))
+    held_out = VAL_PATIENTS if fold is None else fold_patients(fold)
     if split == "val":
-        return [p for p in ids if p in VAL_PATIENTS]
+        return [p for p in ids if p in held_out]
     if split == "train":
-        return [p for p in ids if p not in VAL_PATIENTS]
+        return [p for p in ids if p not in held_out]
     assert split == "testing", split
     return ids
 
 
-def load(root: Path, split: str, svf: bool = True, features: Path | None = None) -> list[dict]:
-    """features: optional root of scripts/cinema_features.py output (ED-stack CineMA features)."""
+def load(root: Path, split: str, svf: bool = True, features: Path | None = None, fold: int | None = None) -> list[dict]:
+    """features: optional root of scripts/cinema_features.py output (ED-stack CineMA features).
+    fold: cross-validation fold replacing the fixed val patients."""
     sub = "testing" if split == "testing" else "training"
     keys = ["pid", "group", "ed", "es", "tau", "z", "cine", "ed_mask", "es_mask"] + (["svf"] if svf else [])
     out = []
-    for pid in split_ids(root, split):
+    for pid in split_ids(root, split, fold):
         with np.load(Path(root) / sub / f"{pid}.npz") as f:
             d = {k: f[k] for k in keys}
         if features:

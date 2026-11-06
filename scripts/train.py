@@ -41,8 +41,8 @@ def main(args):
     torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    train_pts = load(args.cache, "train", features=args.features)
-    val = load(args.cache, "val", svf=False, features=args.features)
+    train_pts = load(args.cache, "train", features=args.features, fold=args.fold)
+    val = load(args.cache, "val", svf=False, features=args.features, fold=args.fold)
     train = Pairs(train_pts, args.device)
     del train_pts
     sigma = train.rms()
@@ -113,6 +113,7 @@ if __name__ == "__main__":
     p.add_argument("--warmup", type=int, default=1000)
     p.add_argument("--ema", type=float, default=0.999)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--fold", type=int, default=None, help="cross-validation fold 0-4; default is the fixed val split")
     p.add_argument("--augment", action="store_true", help="similarity + intensity augmentation (src/data/augment.py)")
     p.add_argument("--features", default=None, help="CineMA feature root (scripts/cinema_features.py); enables conditioning")
     p.add_argument("--val_nfe", type=int, default=4)
