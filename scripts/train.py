@@ -91,7 +91,7 @@ def main(args):
                   f"{(it - start + 1) / (time.time() - t0):.1f} it/s", flush=True)
             run = 0.0
         if it % args.val_every == 0 or it == args.iters:
-            log = dict(iter=it, **validate(ema, args.objective, sigma, val, args.device, args.val_nfe))
+            log = dict(iter=it, **(validate(ema, args.objective, sigma, val, args.device, args.val_nfe) if val else {}))
             print(json.dumps(log), flush=True)
             with open(out / "log.jsonl", "a") as f:
                 f.write(json.dumps(log) + "\n")
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     p.add_argument("--warmup", type=int, default=1000)
     p.add_argument("--ema", type=float, default=0.999)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--fold", type=int, default=None, help="cross-validation fold 0-4; default is the fixed val split")
+    p.add_argument("--fold", type=int, default=None, help="cross-validation fold 0-4, or -1 for all 100 training patients; default is the fixed val split")
     p.add_argument("--augment", action="store_true", help="similarity + intensity augmentation (src/data/augment.py)")
     p.add_argument("--features", default=None, help="CineMA feature root (scripts/cinema_features.py); enables conditioning")
     p.add_argument("--val_nfe", type=int, default=4)

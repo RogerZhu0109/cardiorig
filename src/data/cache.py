@@ -5,6 +5,7 @@ Splits are by patient, never by slice:
     train    ACDC training minus VAL_PATIENTS (90)
     val      VAL_PATIENTS (10): monitoring and hyper-parameter choices only
     testing  ACDC testing (50): final evaluation only; its SVFs are teacher references, never inputs
+fold=ALL trains final models on all 100 training patients (train = 100, val = empty).
 """
 from __future__ import annotations
 
@@ -26,10 +27,13 @@ def fold_patients(fold: int) -> list[str]:
     return sorted(out)
 
 
+ALL = -1  # fold value for final models: train on all 100 training patients, val is empty
+
+
 def split_ids(root: Path, split: str, fold: int | None = None) -> list[str]:
     folder = "testing" if split == "testing" else "training"
     ids = sorted(p.stem for p in (Path(root) / folder).glob("patient*.npz"))
-    held_out = VAL_PATIENTS if fold is None else fold_patients(fold)
+    held_out = VAL_PATIENTS if fold is None else [] if fold == ALL else fold_patients(fold)
     if split == "val":
         return [p for p in ids if p in held_out]
     if split == "train":

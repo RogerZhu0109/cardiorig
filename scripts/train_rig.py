@@ -133,7 +133,7 @@ if __name__ == "__main__":
     p.add_argument("--cache", default="data/processed/acdc")
     p.add_argument("--features", required=True, help="CineMA feature root")
     p.add_argument("--out", required=True)
-    p.add_argument("--fold", type=int, required=True)
+    p.add_argument("--fold", type=int, required=True, help="cross-validation fold 0-4, or -1 for all 100 training patients")
     p.add_argument("--iters", type=int, default=20000)
     p.add_argument("--batch", type=int, default=8, help="patients per step")
     p.add_argument("--lr", type=float, default=2e-4)

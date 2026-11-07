@@ -45,3 +45,15 @@ def test_folds_partition_patients_evenly():
     for fold in folds:
         assert len(fold) == 20 and all(sum((int(p[-3:]) - 1) // 20 == g for p in fold) == 4 for g in range(5))
 
+
+
+def test_all_fold_uses_every_training_patient(tmp_path):
+    from src.data.cache import ALL, split_ids
+    for folder, n in (("training", 100), ("testing", 50)):
+        (tmp_path / folder).mkdir()
+        for i in range(n):
+            (tmp_path / folder / f"patient{i + 1 + (100 if folder == 'testing' else 0):03d}.npz").touch()
+    train = split_ids(tmp_path, "train", ALL)
+    assert train == [f"patient{i:03d}" for i in range(1, 101)]
+    assert split_ids(tmp_path, "val", ALL) == []
+    assert not set(train) & set(split_ids(tmp_path, "testing", ALL))

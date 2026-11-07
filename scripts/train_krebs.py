@@ -83,7 +83,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--cache", default="data/processed/acdc")
     p.add_argument("--out", required=True)
-    p.add_argument("--fold", type=int, required=True)
+    p.add_argument("--fold", type=int, required=True, help="cross-validation fold 0-4, or -1 for all 100 training patients")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--iters", type=int, default=150000)
     p.add_argument("--lr", type=float, default=1.5e-4)
