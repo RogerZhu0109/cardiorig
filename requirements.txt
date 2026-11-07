@@ -5,6 +5,7 @@ nibabel
 SimpleITK
 scipy
 scikit-image
+scikit-learn
 pyyaml
 tqdm
 wandb

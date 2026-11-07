@@ -1,8 +1,8 @@
 """
 ACDC cine-CMR loader.
 
-Produces 2D short-axis (ED_slice, tau, target_slice) pairs for phase-conditioned
-deformation generation.  tau is the ED-relative, cyclic, normalized cardiac phase:
+Produces heart-centred 2D short-axis stacks for phase-conditioned deformation
+generation.  tau is the ED-relative, cyclic, normalized cardiac phase:
     tau = ((t - ED) mod N) / N,  ED -> 0.0, ES -> ~0.3-0.45.
 Per-patient files (data/raw/ACDC/{training,testing}/patientXXX/):
     Info.cfg                      ED / ES (1-based frame index), Group, Height, Weight, NbFrame
@@ -36,10 +36,6 @@ class PatientInfo:
     height: float
     weight: float
     spacing: tuple[float, float, float]  # x, y, z in mm
-
-    @property
-    def tau_es(self) -> float:
-        return phase_tau(self.es, self.ed, self.n_frames)
 
 
 def phase_tau(t: int, ed: int, n_frames: int) -> float:
@@ -108,40 +104,6 @@ class ACDCPatient:
         factors = [1.0] * (vol.ndim - 2) + [sy / target_mm, sx / target_mm]
         return zoom(vol, factors, order=order)
 
-    def pairs(self, target_mm: float | None = 1.5, normalize: bool = True):
-        """
-        Yield dicts with 2D slices for every (slice z, frame t != ED):
-            ed:     (Y, X) float32 reference slice
-            target: (Y, X) float32 slice at frame t
-            tau:    float in [0, 1)
-            z, t, pid, group, es_mask (only when t == ES, else None)
-        """
-        cine = self.cine()
-        if normalize:
-            lo, hi = np.percentile(cine, [1, 99])
-            cine = np.clip((cine - lo) / max(hi - lo, 1e-6), 0, 1).astype(np.float32)
-        if target_mm:
-            cine = self.resample_inplane(cine, target_mm)
-        es_mask = self.mask(self.info.es)
-        if es_mask is not None and target_mm:
-            es_mask = self.resample_inplane(es_mask, target_mm, order=0)
-        ed = self.info.ed
-        for z in range(cine.shape[1]):
-            for t in range(cine.shape[0]):
-                if t == ed:
-                    continue
-                yield dict(
-                    pid=self.pid,
-                    group=self.info.group,
-                    z=z,
-                    t=t,
-                    tau=phase_tau(t, ed, self.info.n_frames),
-                    ed=cine[ed, z],
-                    target=cine[t, z],
-                    es_mask=es_mask[z] if (es_mask is not None and t == self.info.es) else None,
-                )
-
-
     def processed(self, size: int = 128, target_mm: float = 1.5) -> dict:
         """
         Whole sequence resampled to target_mm, cropped to size x size around the
@@ -185,7 +147,3 @@ def center_crop(vol: np.ndarray, center: tuple[int, int], size: int) -> np.ndarr
     ey, ex = min(y0 + size, h), min(x0 + size, w)
     out[..., sy - y0:ey - y0, sx - x0:ex - x0] = vol[..., sy:ey, sx:ex]
     return out
-
-
-def dataset_summary(root: Path) -> list[PatientInfo]:
-    return [ACDCPatient(p).info for p in list_patients(root)]
