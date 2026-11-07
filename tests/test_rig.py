@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from src.rig import basis, project, rays, roi, septal_angle, sector_of_bins, shared_slots, thickening, time_basis
+from src.rig import SHARED, basis, edit, project, rays, roi, septal_angle, sector_of_bins, shared_slots, thickening, time_basis
 from src.utils.svf import integrate, warp
 
 
@@ -47,3 +47,12 @@ def test_shared_slots_and_curves():
     assert len(shared_slots(28, "mid")) == 28 and shared_slots(22, "apical").max() == 57
     assert len(set(shared_slots(28, "basal")) & set(shared_slots(22, "apical"))) == 10  # translation + RV
     assert np.allclose(time_basis(np.array([0.0]))[0], 0)
+
+
+def test_edit_scales_only_target_radial_curves():
+    numbers = np.random.default_rng(0).normal(size=(SHARED, 4))
+    assert np.array_equal(edit(numbers, {3: 1.0}), numbers)
+    out = edit(numbers, {3: 0.0, 15: 0.5})
+    assert np.all(out[[11, 12]] == 0) and np.allclose(out[[47, 48]], 0.5 * numbers[[47, 48]])
+    keep = np.setdiff1d(np.arange(SHARED), [11, 12, 47, 48])
+    assert np.array_equal(out[keep], numbers[keep]) and np.array_equal(numbers, np.random.default_rng(0).normal(size=(SHARED, 4)))

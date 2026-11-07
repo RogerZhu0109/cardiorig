@@ -227,6 +227,14 @@ def decode(numbers: np.ndarray, tau: float, fields: list[np.ndarray], slots: lis
     return np.stack([np.tensordot(c[idx], b, 1) for b, idx in zip(fields, slots)])
 
 
+def edit(numbers: np.ndarray, alpha: dict[int, float]) -> np.ndarray:
+    """Scale the endo and epi radial curves of LV segments {segment: alpha}; 1 = unchanged, 0 = akinetic."""
+    out = numbers.copy()
+    for seg, a in alpha.items():
+        out[2 + 3 * seg: 4 + 3 * seg] *= a
+    return out
+
+
 def token_maps(fields: list[np.ndarray], slots: list[np.ndarray]) -> np.ndarray:
     """Where each token lives, (Z, TOKENS, H, W): support of its fields; the last token is translation."""
     h, w = fields[0].shape[-2:]
