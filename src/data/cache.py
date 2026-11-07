@@ -38,6 +38,19 @@ def split_ids(root: Path, split: str, fold: int | None = None) -> list[str]:
     return ids
 
 
+def ordered(cine: np.ndarray, tau: np.ndarray) -> np.ndarray:
+    """Frames (N, ...) in cardiac order, ED first: tau is ED-relative."""
+    return cine[np.argsort(tau, kind="stable")]
+
+
+def resampled(x: np.ndarray, t: int) -> np.ndarray:
+    """Linear interpolation of the first axis to t frames; both ends are kept."""
+    pos = np.linspace(0, len(x) - 1, t)
+    lo = np.minimum(pos.astype(int), len(x) - 2)
+    w = (pos - lo).reshape(-1, *[1] * (x.ndim - 1))
+    return ((1 - w) * x[lo] + w * x[lo + 1]).astype(x.dtype)
+
+
 def load(root: Path, split: str, svf: bool = True, features: Path | None = None, fold: int | None = None) -> list[dict]:
     """features: optional root of scripts/cinema_features.py output (ED-stack CineMA features).
     fold: cross-validation fold replacing the fixed val patients."""

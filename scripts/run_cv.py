@@ -17,20 +17,21 @@ from huggingface_hub import HfApi, snapshot_download
 REPO = "RZ0109/stacom-runs"
 SYNC_SECONDS = 1200
 STALL_SECONDS = 900
-ITERS = dict(rig=20000, current=40000)
+ITERS = dict(rig=20000, current=40000, krebs=150000, phaseflow=37500)
 
 
 def command(args, fold: int, member: int, out: Path) -> list[str]:
     seed = 100 * member + fold
     common = ["--fold", str(fold), "--seed", str(seed), "--cache", args.cache, "--features", args.features, "--out", str(out)]
-    if args.model == "rig":
-        return [sys.executable, "scripts/train_rig.py", *common]
+    if args.model in ("rig", "krebs", "phaseflow"):
+        return [sys.executable, f"scripts/train_{args.model}.py", *common]
     return [sys.executable, "scripts/train.py", "--objective", "regress", "--augment", "--iters", "40000", *common]
 
 
 def sync(api: HfApi, out: Path, folder: str) -> None:
-    if (out / "last.pt").exists():
-        api.upload_file(path_or_fileobj=str(out / "last.pt"), path_in_repo=f"{folder}/{out.name}/last.pt", repo_id=REPO)
+    for f in out.glob("*.pt"):
+        if f.name != "tmp.pt":
+            api.upload_file(path_or_fileobj=str(f), path_in_repo=f"{folder}/{out.name}/{f.name}", repo_id=REPO)
 
 
 def latest(out: Path) -> tuple[int, float]:
@@ -92,7 +93,7 @@ def main(args):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--model", choices=["current", "rig"], required=True)
+    p.add_argument("--model", choices=list(ITERS), required=True)
     p.add_argument("--folds", type=int, nargs="+", required=True)
     p.add_argument("--members", type=int, nargs="+", required=True, help="seed = 100 * member + fold")
     p.add_argument("--cache", required=True)
