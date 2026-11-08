@@ -43,7 +43,9 @@ def evaluate(args) -> pd.DataFrame:
         current, sigma = load_current(runs / f"current_s{seed}" / "last.pt", device)
         rig, mean, std = load_rig(runs / f"rig_s{seed}" / "last.pt", device)
         gen = torch.Generator().manual_seed(seed)
-        for d in patients:
+        for i, d in enumerate(patients):
+            if i % 10 == 0:
+                print(f"seed {seed}: patient {i}/{len(patients)}", flush=True)
             info = dict(pid=str(d["pid"]), group=str(d["group"]))
             es, pos = frames_of(d)
             cine = resampled(ordered(d["cine"], d["tau"]).astype(np.float32), T)
