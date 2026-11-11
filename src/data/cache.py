@@ -32,7 +32,7 @@ ALL = -1  # fold value for final models: train on all 100 training patients, val
 
 def split_ids(root: Path, split: str, fold: int | None = None) -> list[str]:
     folder = "testing" if split == "testing" else "training"
-    ids = sorted(p.stem for p in (Path(root) / folder).glob("patient*.npz"))
+    ids = sorted(p.stem for p in (Path(root) / folder).glob("*.npz"))
     held_out = VAL_PATIENTS if fold is None else [] if fold == ALL else fold_patients(fold)
     if split == "val":
         return [p for p in ids if p in held_out]

@@ -34,12 +34,12 @@ def list_items(folder_id):
     return get_json(f"{API}/item?folderId={folder_id}&limit=500")
 
 
-def download_item(item, dest: Path, retries=5):
+def download_item(item, dest: Path, retries=5, timeout=600):
     if dest.exists() and dest.stat().st_size == item["size"]:
         return dest, 0
     for i in range(retries):
         try:
-            with urllib.request.urlopen(f"{API}/item/{item['_id']}/download", timeout=600) as r, open(dest, "wb") as f:
+            with urllib.request.urlopen(f"{API}/item/{item['_id']}/download", timeout=timeout) as r, open(dest, "wb") as f:
                 while chunk := r.read(1 << 20):
                     f.write(chunk)
             if dest.stat().st_size != item["size"]:

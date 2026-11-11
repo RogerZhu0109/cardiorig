@@ -31,3 +31,8 @@ def es_inputs(d: dict, device) -> tuple[torch.Tensor, torch.Tensor, dict]:
         cond = dict(feat=torch.from_numpy(d["feat"].astype("float32")).to(device),
                     cls=torch.from_numpy(d["cls"].astype("float32")).to(device)[None].expand(len(ed), -1))
     return ed, tau, cond
+
+
+def endpoint_error(v: torch.Tensor, truth: torch.Tensor, region: torch.Tensor, mm: float = 1.5) -> float:
+    """Mean in-plane distance (mm) over region between the motion exp(-v) of ED pixels and their true motion (px)."""
+    return ((integrate(-v) - truth).norm(dim=1)[region].mean() * mm).item()

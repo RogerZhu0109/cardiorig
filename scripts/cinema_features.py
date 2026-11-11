@@ -8,6 +8,7 @@ Out, one file per patient, out_dir/{training,testing}/patientXXX.npz:
     feat (Z, 768, 12, 12) f16, indexed (slice, channel, y, x) like the cache images;  cls (768,) f16
 Runs in the separate env .venv-cinema (CineMA pins conflict with the main env).
 Usage: .venv-cinema/bin/python scripts/cinema_features.py --data_root data/raw/ACDC --out_dir data/processed/acdc_cinema
+       .venv-cinema/bin/python scripts/cinema_features.py --cache data/processed/straus --out_dir data/processed/straus/cinema
 """
 import argparse
 import sys
@@ -49,6 +50,14 @@ def encode(model, ed: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def main(args):
     model = CineMA.from_pretrained().eval()
     out = Path(args.out_dir)
+    if args.cache:  # any cache of processed stacks (STRAUS): the ED stack of every file
+        for f in sorted(Path(args.cache).glob("t*ing/*.npz")):
+            with np.load(f) as d:
+                feat, cls = encode(model, d["cine"][int(d["ed"])].astype(np.float32))
+            (out / f.parent.name).mkdir(parents=True, exist_ok=True)
+            np.savez(out / f.parent.name / f.name, feat=feat, cls=cls)
+            print(f.stem, feat.shape, flush=True)
+        return
     patients = list_patients(Path(args.data_root))
     for p in reversed(patients) if args.reverse else patients:  # a second process can work from the other end
         pat = ACDCPatient(p)
@@ -65,6 +74,7 @@ def main(args):
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--data_root", default="data/raw/ACDC")
+    p.add_argument("--cache", help="read ED stacks from a processed cache instead of raw ACDC")
     p.add_argument("--out_dir", default="data/processed/acdc_cinema")
     p.add_argument("--reverse", action="store_true")
     main(p.parse_args())
