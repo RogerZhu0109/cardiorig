@@ -2,6 +2,7 @@
 Train the rig network on compact rig numbers fitted to the teacher motion. Same protocol as
 train.py: fixed budget, final EMA, no checkpoint selection, resumes from out/last.pt.
 Usage: python scripts/train_rig.py --fold 0 --features data/processed/acdc_cinema --out checkpoints/cv/rig_f0
+--variant trains one ablation of EXPERIMENTS.md, "Ablations of the rig model".
 """
 import argparse
 import copy
@@ -19,6 +20,22 @@ from src.data.augment import intensity, random_similarity  # noqa: E402
 from src.data.cache import load  # noqa: E402
 from src.models.rig_net import RigNet, beta_nll  # noqa: E402
 from src.rig import SHARED, fit_compact, patient_fields, token_maps  # noqa: E402
+
+
+VARIANTS = ("full", "no_cinema", "no_augment", "mse", "uniform_pool", "no_mixer")
+
+
+def ablate(variant: str, maps, feat, cls) -> tuple:
+    """Network inputs of an ablation variant; used in training and at inference."""
+    if variant == "no_cinema":
+        feat, cls = torch.zeros_like(feat), torch.zeros_like(cls)
+    if variant == "uniform_pool":
+        maps = torch.ones_like(maps)
+    return maps, feat, cls
+
+
+def build(variant: str = "full") -> RigNet:
+    return RigNet(layers=0 if variant == "no_mixer" else 3)
 
 
 def stack_inputs(d: dict, fields=None, slots=None) -> dict:
@@ -78,7 +95,7 @@ def main(args):
     mean, std = targets.mean(0), targets.std(0).clamp_min(1e-4)
     print(f"{len(items)} train patients, {SHARED} motions, device {args.device}", flush=True)
 
-    model = RigNet().to(args.device)
+    model = build(args.variant).to(args.device)
     ema = copy.deepcopy(model).eval().requires_grad_(False)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     sched = torch.optim.lr_scheduler.LambdaLR(
@@ -100,13 +117,20 @@ def main(args):
     for it in range(start, args.iters + 1):
         idx = torch.randint(len(items), (args.batch,), generator=gen)
         x, maps, owner, feat, cls = collate([items[i] for i in idx.tolist()], args.device)
-        x, maps, feat, A = similarity(x, maps, feat, owner, gen)
-        x = torch.cat([intensity(x[:, :1], gen), x[:, 1:]], 1)
         idx = idx.to(args.device)
-        y = (transform_targets(targets[idx], A) - mean) / std
+        y = targets[idx]
+        if args.variant != "no_augment":
+            x, maps, feat, A = similarity(x, maps, feat, owner, gen)
+            x = torch.cat([intensity(x[:, :1], gen), x[:, 1:]], 1)
+            y = transform_targets(y, A)
+        maps, feat, cls = ablate(args.variant, maps, feat, cls)
+        y = (y - mean) / std
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp):
             m, log_var = model(x, maps, owner, feat, cls)
-        l = beta_nll(m.float(), log_var.float(), y, used[idx])
+        if args.variant == "mse":
+            l = (used[idx] * (m.float() - y) ** 2).sum() / used[idx].sum().clamp_min(1)
+        else:
+            l = beta_nll(m.float(), log_var.float(), y, used[idx])
         opt.zero_grad(set_to_none=True)
         l.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -140,6 +164,7 @@ if __name__ == "__main__":
     p.add_argument("--warmup", type=int, default=500)
     p.add_argument("--ema", type=float, default=0.999)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--variant", choices=VARIANTS, default="full")
     p.add_argument("--log_every", type=int, default=500)
     p.add_argument("--save_every", type=int, default=2000)
     p.add_argument("--device", default="cuda" if torch.cuda.is_available()

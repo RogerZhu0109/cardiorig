@@ -4,6 +4,7 @@ repo so a reclaimed Colab VM can resume. Every minute it prints one status line 
 and any failed or stalled run, which also keeps the kernel alive.
 Usage: python scripts/run_cv.py --model rig --folds 0 1 2 3 4 --members 1 2 --cache /content/cache --features /content/cache/cinema
 Final models: --folds -1 --members 0 1 2 3 4 --folder final (seeds 0-4 on all 100 training patients).
+Ablations: --model rig --variant no_cinema --folder ablations (runs are named rig_no_cinema_m{member}_f{fold}).
 """
 import argparse
 import os
@@ -31,6 +32,8 @@ def run_name(model: str, member: int, fold: int) -> str:
 def command(args, fold: int, member: int, out: Path) -> list[str]:
     seed = member if fold == ALL else 100 * member + fold
     common = ["--fold", str(fold), "--seed", str(seed), "--cache", args.cache, "--features", args.features, "--out", str(out)]
+    if args.variant:
+        common += ["--variant", args.variant]
     if args.model in ("rig", "krebs", "phaseflow"):
         return [sys.executable, f"scripts/train_{args.model}.py", *common]
     return [sys.executable, "scripts/train.py", "--objective", "regress", "--augment", "--iters", "40000", *common]
@@ -79,12 +82,13 @@ def status(procs: dict, seen: dict, total: int) -> str:
 def main(args):
     api = HfApi()
     root = Path(args.root)
-    names = [run_name(args.model, m, k) for m in args.members for k in args.folds]
+    label = f"{args.model}_{args.variant}" if args.variant else args.model
+    names = [run_name(label, m, k) for m in args.members for k in args.folds]
     snapshot_download(REPO, allow_patterns=[f"{args.folder}/{n}/*" for n in names], local_dir=root)
     procs, env = {}, dict(os.environ, OMP_NUM_THREADS="2")
     for m in args.members:
         for fold in args.folds:
-            out = root / args.folder / run_name(args.model, m, fold)
+            out = root / args.folder / run_name(label, m, fold)
             out.mkdir(parents=True, exist_ok=True)
             log = open(out / "log.txt", "a")
             procs[out] = (subprocess.Popen(command(args, fold, m, out), stdout=log, stderr=subprocess.STDOUT, env=env), log)
@@ -113,6 +117,7 @@ if __name__ == "__main__":
     p.add_argument("--members", type=int, nargs="+", required=True, help="seed = 100 * member + fold; with fold -1, seed = member")
     p.add_argument("--cache", required=True)
     p.add_argument("--features", required=True)
+    p.add_argument("--variant", help="rig ablation (train_rig.py --variant)")
     p.add_argument("--folder", default="cv_ensemble", help="folder in the Hugging Face repo")
     p.add_argument("--root", default="/content/runs")
     main(p.parse_args())

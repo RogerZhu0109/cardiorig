@@ -29,7 +29,7 @@ class RigNet(nn.Module):
         self.to_token = nn.Linear(ch[-1], dim)
         self.token_id = nn.Parameter(torch.zeros(TOKENS, dim))
         layer = nn.TransformerEncoderLayer(dim, 8, 4 * dim, dropout, "gelu", batch_first=True, norm_first=True)
-        self.mixer = nn.TransformerEncoder(layer, layers, enable_nested_tensor=False)
+        self.mixer = nn.TransformerEncoder(layer, layers, enable_nested_tensor=False) if layers else nn.Identity()
         self.norm = nn.LayerNorm(dim)
         self.lv_head = nn.Linear(dim, 3 * curves * 2)
         self.rv_head = nn.Linear(dim, 2 * curves * 2)
