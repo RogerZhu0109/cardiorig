@@ -204,9 +204,9 @@ def patient_fields(mask: np.ndarray) -> tuple[list[np.ndarray], list[np.ndarray]
 
 
 def fit_shared(fields: list[np.ndarray], slots: list[np.ndarray], regions: list[np.ndarray],
-               motion: np.ndarray) -> np.ndarray:
-    """Least-squares motions shared across slices, (SHARED, F), from motion (F, Z, 2, H, W)."""
-    normal, moment = np.zeros((SHARED, SHARED)), np.zeros((SHARED, len(motion)))
+               motion: np.ndarray, size: int = SHARED) -> np.ndarray:
+    """Least-squares motions shared across slices, (size, F), from motion (F, Z, 2, H, W)."""
+    normal, moment = np.zeros((size, size)), np.zeros((size, len(motion)))
     for z, (b, idx, region) in enumerate(zip(fields, slots, regions)):
         a = b[:, :, region].reshape(len(b), -1)
         normal[np.ix_(idx, idx)] += a @ a.T
