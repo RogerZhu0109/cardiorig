@@ -33,9 +33,9 @@ REFERENCES = ("identity", "teacher", "ceiling")  # no training: one value per pa
 
 
 @torch.no_grad()
-def evaluate(args) -> pd.DataFrame:
+def evaluate(args, patients: list[dict] | None = None) -> pd.DataFrame:
     device, rows, runs = args.device, [], Path(args.runs)
-    patients = load(args.cache, "testing", features=args.features)
+    patients = patients or load(args.cache, "testing", features=args.features)
     for seed in args.seeds:
         pf = load_phaseflow(runs / f"phaseflow_s{seed}", device)
         kr = Krebs().to(device).eval()
