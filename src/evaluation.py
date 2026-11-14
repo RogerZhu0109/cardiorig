@@ -1,7 +1,6 @@
 """
-ED -> ES evaluation of one patient's slice stack, shared by train.py (val monitoring)
-and evaluate.py. Only the ED slices, ED labels and tau_ES are inputs; ES labels are
-used for scoring only.
+ED -> ES evaluation of one patient's slice stack. Only the ED slices, ED labels and tau_ES are
+inputs; ES labels are used for scoring only.
 """
 from __future__ import annotations
 

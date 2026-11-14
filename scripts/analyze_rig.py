@@ -1,6 +1,6 @@
 """
-Can the rig represent teacher motion, and does the ED frame
-predict regional thickening? Train + val patients only; ES labels only score.
+Can the rig represent the dense registration, and does the ED frame predict regional
+thickening? Training patients only; ES labels only score.
 Usage: python scripts/analyze_rig.py --cache data/processed/acdc
 """
 import argparse

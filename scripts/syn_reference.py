@@ -2,9 +2,7 @@
 External reference for the teacher: ANTs SyN (CC) on the same ED -> ES slices and
 metrics as scripts/tune_teacher.py.  Not used to produce targets.
 
-Runs in a separate environment: antspyx pins scipy<1.16, whose macOS wheels fail
-to load here, so install antspyx + nibabel into their own venv and then force
-scipy>=1.16 with --no-deps.
+Runs in a separate environment with antspyx and nibabel.
 Usage: <ants-venv>/bin/python scripts/syn_reference.py --flow_sigmas 1 2 3 --radius 10 --out outputs/teacher
 """
 import argparse

@@ -1,8 +1,8 @@
 """
-Train the rig network on compact rig numbers fitted to the teacher motion. Same protocol as
+Train the rig network on the rig parameters fitted to the dense registration. Same protocol as
 train.py: fixed budget, final EMA, no checkpoint selection, resumes from out/last.pt.
 Usage: python scripts/train_rig.py --fold 0 --features data/processed/acdc_cinema --out checkpoints/cv/rig_f0
---variant trains one ablation of EXPERIMENTS.md, "Ablations of the rig model".
+--variant trains one ablation.
 """
 import argparse
 import copy

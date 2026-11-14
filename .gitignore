@@ -15,3 +15,5 @@ __pycache__/
 .venv/
 .venv-cinema/
 .idea/
+.pytest_cache/
+figures/pdf

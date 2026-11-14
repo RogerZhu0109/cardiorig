@@ -1,10 +1,9 @@
 """
-Train the SVF generator on teacher targets: flow matching (fm) or the regression baseline.
-Only ACDC training patients are read: 90 train, 10 val (src/data/cache.py VAL_PATIENTS) for
-monitoring. The test split is never read. The saved model is the EMA after a fixed iteration
-budget; there is no checkpoint selection. out/last.pt holds the full training state, and a run
-restarted with the same --out resumes from it (Colab VMs can disappear mid-run).
-Usage: python scripts/train.py --objective fm --out checkpoints/fm_s0
+Train the dense-field model (src/models/unet.py) on the registration fields. Only ACDC training
+patients are read; the held-out patients of --fold are used for monitoring. The saved model is the
+EMA after a fixed iteration budget; there is no checkpoint selection. out/last.pt holds the full
+training state, and a run restarted with the same --out resumes from it.
+Usage: python scripts/train.py --fold 0 --seed 0 --augment --iters 40000 --features data/processed/acdc_cinema --out checkpoints/cv/current_f0
 """
 import argparse
 import copy
@@ -21,17 +20,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.data.augment import augment  # noqa: E402
 from src.data.cache import Pairs, load  # noqa: E402
 from src.evaluation import es_inputs, score  # noqa: E402
-from src.models.flow import loss, sample  # noqa: E402
-from src.models.unet import UNet  # noqa: E402
+from src.models.unet import UNet, loss, predict  # noqa: E402
 from src.utils.metrics import STRUCTURES  # noqa: E402
 
 
-def validate(model, objective, sigma, patients, device, nfe):
-    g = torch.Generator().manual_seed(0)
+def validate(model, sigma, patients, device):
     rows = []
     for d in patients:
         ed, tau, cond = es_inputs(d, device)
-        rows.append(score(d, sample(model, objective, ed, tau, sigma, nfe, g, **cond)))
+        rows.append(score(d, predict(model, ed, tau, sigma, **cond)))
     return dict(val_dice=float(np.nanmean([[r[f"dice_{k}"] for k in STRUCTURES.values()] for r in rows])),
                 val_folded_pct=float(np.mean([r["folded_pct"] for r in rows])))
 
@@ -75,7 +72,7 @@ def main(args):
         elif args.augment:
             ed, v = augment(ed, v, gen)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp):
-            l = loss(model, args.objective, ed, tau, v / sigma, **cond)
+            l = loss(model, ed, tau, v / sigma, **cond)
         opt.zero_grad(set_to_none=True)
         l.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -91,7 +88,7 @@ def main(args):
                   f"{(it - start + 1) / (time.time() - t0):.1f} it/s", flush=True)
             run = 0.0
         if it % args.val_every == 0 or it == args.iters:
-            log = dict(iter=it, **(validate(ema, args.objective, sigma, val, args.device, args.val_nfe) if val else {}))
+            log = dict(iter=it, **(validate(ema, sigma, val, args.device) if val else {}))
             print(json.dumps(log), flush=True)
             with open(out / "log.jsonl", "a") as f:
                 f.write(json.dumps(log) + "\n")
@@ -106,7 +103,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--cache", default="data/processed/acdc")
     p.add_argument("--out", required=True)
-    p.add_argument("--objective", choices=["fm", "regress"], default="fm")
     p.add_argument("--iters", type=int, default=60000)
     p.add_argument("--batch", type=int, default=64)
     p.add_argument("--lr", type=float, default=2e-4)
@@ -116,7 +112,6 @@ if __name__ == "__main__":
     p.add_argument("--fold", type=int, default=None, help="cross-validation fold 0-4, or -1 for all 100 training patients; default is the fixed val split")
     p.add_argument("--augment", action="store_true", help="similarity + intensity augmentation (src/data/augment.py)")
     p.add_argument("--features", default=None, help="CineMA feature root (scripts/cinema_features.py); enables conditioning")
-    p.add_argument("--val_nfe", type=int, default=4)
     p.add_argument("--log_every", type=int, default=500)
     p.add_argument("--val_every", type=int, default=5000)
     p.add_argument("--device", default="cuda" if torch.cuda.is_available()

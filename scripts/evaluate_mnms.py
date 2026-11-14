@@ -1,9 +1,8 @@
 """
-One-time zero-shot evaluation of the final ACDC-trained models on the 345 M&Ms subjects
-(pre-registered in EXPERIMENTS.md, "M&Ms external test"). Scoring is scripts/evaluate_test.py
-unchanged; this adds the ACDC pathology label PhaseFlow needs, the rig-anatomy check before any
+Zero-shot evaluation of the final ACDC-trained models on the 345 M&Ms subjects. Scoring is
+scripts/evaluate_test.py unchanged; this adds the ACDC pathology label PhaseFlow needs, the rig-anatomy check before any
 model runs, and the per-vendor report. Writes mnms.csv (one row per subject, method and seed).
-Usage: python scripts/evaluate_mnms.py --runs /content/runs/final --cache /content/cache/mnms --features /content/cache/mnms/cinema
+Usage: python scripts/evaluate_mnms.py --runs checkpoints/final --cache data/processed/mnms --features data/processed/mnms/cinema
        python scripts/evaluate_mnms.py --report outputs/mnms/mnms.csv   (re-print from the CSV)
 """
 import argparse

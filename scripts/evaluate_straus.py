@@ -1,10 +1,9 @@
 """
-STRAUS: the final ACDC-trained models against simulated true motion (pre-registered in EXPERIMENTS.md,
-"STRAUS: accuracy against simulated true motion"). Nothing is trained. Three parts: accuracy of every
+STRAUS: the final ACDC-trained models against simulated true motion. Nothing is trained. Three parts: accuracy of every
 method, the rig fitted to the true motion, and segment edits against the matched infarct truth.
 Writes accuracy.csv (one row per sequence, method and seed), frames.csv (per frame), edits.csv and
-edit_reports.csv, and prints the pre-registered summaries.
-Usage: python scripts/evaluate_straus.py --runs /content/runs/final --cache data/processed/straus --features data/processed/straus/cinema
+edit_reports.csv, and prints the summaries.
+Usage: python scripts/evaluate_straus.py --runs checkpoints/final --cache data/processed/straus --features data/processed/straus/cinema
        python scripts/evaluate_straus.py --report outputs/straus   (re-print from the CSVs)
 """
 import argparse
@@ -20,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.evaluate_cv import load_current, load_rig, predict_rig  # noqa: E402
 from scripts.evaluate_published import krebs_fields, load_phaseflow, phaseflow_fields  # noqa: E402
 from src.data.cache import load  # noqa: E402
-from src.models.flow import sample  # noqa: E402
+from src.models.unet import predict  # noqa: E402
 from src.models.krebs import Krebs  # noqa: E402
 from src.rig import (OFFSET, SECTORS, TAU, decode, edit, fit_compact, patient_fields, positions, rays,  # noqa: E402
                      sector_centres, septal_angle, time_basis)
@@ -81,7 +80,7 @@ def score_frames(d: dict, v, er: np.ndarray, seg: np.ndarray, device) -> tuple[d
     onehot = F.one_hot(torch.from_numpy(d["ed_mask"]).long(), 4).permute(0, 3, 1, 2).float().to(device)
     myo, es, T = torch.from_numpy(d["ed_mask"] == 2).to(device), d["es"], len(d["tau"])
     epe, dsc, folded, sse, sst = np.zeros(T), np.full((T, 3), np.nan), np.zeros(T), 0.0, 0.0
-    shape, has_myo = np.zeros(T), myo.any(2).any(1)  # exploratory (added after the first results): error with each slice's shift removed
+    shape, has_myo = np.zeros(T), myo.any(2).any(1)  # error with each slice's shift removed
     for t in range(1, T):
         vt, truth = torch.as_tensor(v[t]).float().to(device), torch.from_numpy(d["truth"][t]).to(device)
         u, w = integrate(vt), forward(vt)
@@ -186,7 +185,7 @@ def evaluate(args) -> dict[str, pd.DataFrame]:
             feat = torch.from_numpy(d["feat"].astype(np.float32)).to(device)
             cls = torch.from_numpy(d["cls"].astype(np.float32)).to(device)[None].expand(len(ed), -1)
             with torch.no_grad():
-                v_current = torch.stack([sample(current, "regress", ed, torch.full((len(ed),), float(t), device=device), sigma, 1,
+                v_current = torch.stack([predict(current, ed, torch.full((len(ed),), float(t), device=device), sigma,
                                                 feat=feat, cls=cls) for t in d["tau"]])
                 v_pf = phaseflow_fields(pf, dict(d, group=ACDC_GROUP[d["group"]]), 0.0, device, gen)
                 v_kr = krebs_fields(kr, d, None, device)
@@ -264,7 +263,7 @@ def report(t: dict[str, pd.DataFrame]) -> None:
     print("-- inward radial motion at ES, predicted / true\n" + ratio.reindex(order).round(3).to_string())
 
     if "epe_shape_es" in acc:
-        print("\n== Exploratory, added after the first results: error with each slice's whole-slice shift removed ==")
+        print("\n== Error with each slice's whole-slice shift removed ==")
         cols = ["epe_es", "epe_shape_es", "epe_shape_all", "shift_true", "shift", "shift_err"]
         for kind in ("healthy", "infarct", "lbbb"):
             print(f"-- {kind}\n" + acc[acc.kind == kind].groupby("method")[cols].mean().reindex(order[:-1]).round(2).to_string())

@@ -1,7 +1,7 @@
 """
-Segment edits of the rig model on held-out patients (EXPERIMENTS.md, "Segment edits"): locality,
-regional-report edits with controls, dose-response. Uses saved held-out rig numbers and the current
-model of the fold that held each patient out. ES labels only score and build the report. Train + val only.
+Segment edits of the rig model on held-out patients: locality, regional-report edits with controls,
+dose-response. Uses the held-out rig parameters saved by evaluate_cv.py and the dense-field model of
+the fold that held each patient out. ES labels only score and build the report. Training patients only.
 Usage: python scripts/analyze_edits.py --predictions outputs/cv/rig_predictions.npz --truth outputs/rig/segments.csv \
     --runs checkpoints/cv --features data/processed/acdc_cinema --out outputs/edits
 """
@@ -16,11 +16,10 @@ import torch
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.analyze_uncertainty import segment_thickening  # noqa: E402
 from scripts.evaluate_cv import load_current, paired  # noqa: E402
 from src.data.cache import fold_patients, load  # noqa: E402
 from src.evaluation import es_inputs  # noqa: E402
-from src.models.flow import sample  # noqa: E402
+from src.models.unet import predict  # noqa: E402
 from src.rig import (BIN_CENTRES, BINS, DECAY, MIN_PX, OFFSET, SECTORS, TAU, _filled, _outer_radius,  # noqa: E402
                      _periodic_hats, edit, patient_fields, positions, rays, roi, sector_centres, sector_of_bins,
                      septal_angle, time_basis)
@@ -106,6 +105,36 @@ def endo_error(p: Patient, pred: np.ndarray) -> dict[str, np.ndarray]:
                 count[OFFSET[pos] + s] += 1
     out = np.where(count > 0, total / np.maximum(count, 1), np.nan)
     return dict(err=out[0], excursion_true=out[1], excursion_pred=out[2])
+
+
+def radial(w: torch.Tensor, k: dict, radius: np.ndarray) -> torch.Tensor:
+    """Radial displacement of a batch w (K, 2, H, W) along a curve, (K, bins)."""
+    c, s = (torch.tensor(f(BIN_CENTRES), dtype=w.dtype, device=w.device) for f in (np.cos, np.sin))
+    r = torch.tensor(radius, dtype=w.dtype, device=w.device)
+    h, n = w.shape[-2:]
+    x, y = 2 * (k["cx"] + r * c) / (n - 1) - 1, 2 * (k["cy"] + r * s) / (h - 1) - 1
+    grid = torch.stack([x, y], -1)[None, None].expand(len(w), -1, -1, -1)
+    at = F.grid_sample(w, grid, mode="bilinear", align_corners=True, padding_mode="border")[:, :, 0]
+    return at[:, 0] * c + at[:, 1] * s
+
+
+def segment_thickening(motion: dict, mask: np.ndarray, device) -> tuple[torch.Tensor, np.ndarray]:
+    """Thickening per segment (K, 16) in mm, from SVFs motion[z] (K, 2, H, W), and which segments exist."""
+    septum, total, count = septal_angle(mask), None, np.zeros(16)
+    for z, pos in positions(mask).items():
+        k = rays(mask[z])
+        w = integrate(-motion[z])
+        dt = (radial(w, k, k["epi"]) - radial(w, k, k["endo"])) * MM
+        wall = torch.from_numpy(k["has_wall"]).to(device)
+        total = torch.zeros(len(w), 16, device=device) if total is None else total
+        sector = sector_of_bins(septum, SECTORS[pos])
+        for s in range(SECTORS[pos]):
+            bins = torch.from_numpy(sector == s).to(device) & wall
+            if bins.any():
+                seg = OFFSET[pos] + s
+                total[:, seg] += dt[:, bins].mean(1)
+                count[seg] += 1
+    return total / torch.from_numpy(np.maximum(count, 1)).float().to(device), count > 0
 
 
 def thickening(p: Patient, v: torch.Tensor) -> np.ndarray:
@@ -294,7 +323,7 @@ def summarise(loc: pd.DataFrame, rep: pd.DataFrame, seg: pd.DataFrame, dos: pd.D
         print(f"[{metric}, mask edit gain]", paired(wide.assign(gain_rig=wide.rig_report - wide.rig,
                                                                gain_mask=wide.current_mask - wide.current), "gain_rig", "gain_mask"))
         print(f"[{metric}, edited rig vs edited current]", paired(wide, "rig_report", "current_mask"))
-    print("Inward endocardial excursion at ES by report flag (mm, mean over patient-segments; added after the result):")
+    print("Inward endocardial excursion at ES by report flag (mm, mean over patient-segments):")
     print(seg.groupby(["flag", "method"])[["excursion_true", "excursion_pred", "thickening_true", "thickening_pred"]]
           .mean().round(2).unstack("method").stack(0, future_stack=True).to_string())
 
@@ -313,7 +342,7 @@ def summarise(loc: pd.DataFrame, rep: pd.DataFrame, seg: pd.DataFrame, dos: pd.D
     print(f"monotone increasing: {np.mean(mono):.4f} of {len(mono)} patient-segments; slope {np.median(slopes):.3f} mm per unit alpha; "
           f"median R2 {np.nanmedian(r2):.4f}")
     mono, mono_low, positive = map(np.array, (mono, mono_low, positive))
-    print(f"added after the 5-patient check, no bar: increasing over alpha <= 1: {mono_low.mean():.4f}; "
+    print(f"increasing over alpha <= 1: {mono_low.mean():.4f}; "
           f"unedited thickening > 0: {positive.mean():.4f}, of these increasing: {mono[positive].mean():.4f}, "
           f"over alpha <= 1: {mono_low[positive].mean():.4f}")
     by_alpha = dos.groupby("alpha").agg(folded_px=("folded_px", "sum"), any_folded=("folded_px", lambda x: (x > 0).mean()),
@@ -345,7 +374,7 @@ def main(args):
             with torch.no_grad():
                 p = Patient(d, numbers[pid], args.device)
                 ed, tau, cond = es_inputs(d, args.device)
-                v_current = sample(current, "regress", ed, tau, sigma, 1, **cond).float()
+                v_current = predict(current, ed, tau, sigma, **cond).float()
                 loc += locality(p)
                 rows, segments = report_edits(p, flags[pid], truth_by[pid], v_current, rng)
                 rep, seg = rep + rows, seg + segments

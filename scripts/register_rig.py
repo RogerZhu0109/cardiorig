@@ -1,7 +1,7 @@
 """
-Rig as a registration model (pre-registered in EXPERIMENTS.md, "Rig registration"): the compact rig numbers
-of a patient fitted directly to the images with the teacher's symmetric LNCC and no smoothness term, against
-the teacher and a spline code with the same sharing. Nothing is trained; fits are cached per patient.
+Rig as a registration model: the rig parameters of a patient fitted directly to the images with the
+symmetric LNCC of the dense registration and no smoothness term, against the dense registration and a
+B-spline code with the same sharing. Nothing is trained; fits are cached per patient.
 Usage: python scripts/register_rig.py --cache data/processed/acdc        (100 training patients, ES labels)
        python scripts/register_rig.py --straus data/processed/straus     (18 sequences, true motion)
        python scripts/register_rig.py                                    (re-print from the CSVs in --out)
@@ -141,7 +141,7 @@ def report_straus(rows: pd.DataFrame) -> None:
     rows["kind"] = rows.condition.map(lambda c: c if c in ("healthy", "lbbb") else "infarct")
     cols = ["epe_es", "epe_all", "dice_es", "energy", "radial", "radial_true", "folded_pct", "epe_shape_es"]
     for kind, part in rows.groupby("kind"):
-        print(f"== STRAUS {kind} ({part.pid.nunique()} sequences); epe_shape_es is exploratory ==\n"
+        print(f"== STRAUS {kind} ({part.pid.nunique()} sequences) ==\n"
               + part.groupby("method", sort=False)[cols].mean().round(3).to_string())
     healthy = rows[rows.condition == "healthy"].pivot(index="anatomy", columns="method", values="epe_es")
     print("-- healthy, ES EPE (mm) per anatomy\n" + healthy.round(2).to_string())

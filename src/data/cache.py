@@ -1,10 +1,10 @@
 """
-Cached ACDC slices + teacher SVFs (scripts/preprocess.py) as generator training pairs.
+Cached ACDC slices + registration SVFs (scripts/preprocess.py) as training pairs.
 
 Splits are by patient, never by slice:
     train    ACDC training minus VAL_PATIENTS (90)
-    val      VAL_PATIENTS (10): monitoring and hyper-parameter choices only
-    testing  ACDC testing (50): final evaluation only; its SVFs are teacher references, never inputs
+    val      VAL_PATIENTS (10), or the held-out patients of a cross-validation fold
+    testing  ACDC testing (50): final evaluation only; its SVFs are references, never inputs
 fold=ALL trains final models on all 100 training patients (train = 100, val = empty).
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ import numpy as np
 import torch
 
 # Last 2 patients of each pathology block (ACDC training is ordered in blocks of 20);
-# disjoint from TUNE_PATIENTS, the teacher tuning set.
+# disjoint from TUNE_PATIENTS, the registration tuning set.
 VAL_PATIENTS = [f"patient{b + i:03d}" for b in (1, 21, 41, 61, 81) for i in (18, 19)]
 
 

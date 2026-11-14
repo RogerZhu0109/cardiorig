@@ -1,10 +1,9 @@
 """
-Final, one-time evaluation on the 50 ACDC test patients (pre-registered in EXPERIMENTS.md,
-"Final test-set run"). Models: {rig,current,phaseflow,krebs}_s{seed}, trained on all 100 training
-patients. Inference variants are the ones fixed by cross-validation; ES labels only score.
-Writes test.csv (one row per patient, method and seed) and prints the pre-registered comparisons
-with a two-level bootstrap (patients and seeds).
-Usage: python scripts/evaluate_test.py --runs /content/runs/final --features /content/cache/cinema
+Evaluation on the 50 ACDC test patients. Models: {rig,current,phaseflow,krebs}_s{seed}, trained on
+all 100 training patients. Inference settings are the ones fixed by cross-validation; ES labels
+only score. Writes test.csv (one row per patient, method and seed) and prints the comparisons with
+a two-level bootstrap (patients and seeds).
+Usage: python scripts/evaluate_test.py --runs checkpoints/final --features data/processed/acdc_cinema
        python scripts/evaluate_test.py --report outputs/test/test.csv   (re-print from the CSV)
 """
 import argparse
@@ -22,7 +21,7 @@ from scripts.evaluate_published import (curve_metrics, es_krebs, frames_of, kreb
                                         phaseflow_fields, predicted_area)
 from scripts.train_phaseflow import lv_probability  # noqa: E402
 from src.data.cache import load, ordered, resampled  # noqa: E402
-from src.models.flow import sample  # noqa: E402
+from src.models.unet import predict  # noqa: E402
 from src.models.krebs import Krebs  # noqa: E402
 from src.models.phaseflow import T  # noqa: E402
 from src.evaluation import score  # noqa: E402
@@ -58,13 +57,13 @@ def evaluate(args, patients: list[dict] | None = None) -> pd.DataFrame:
             feat = torch.from_numpy(d["feat"].astype(np.float32)).to(device)
             cls = torch.from_numpy(d["cls"].astype(np.float32)).to(device)[None].expand(len(ed), -1)
             at = lambda t: torch.full((len(ed),), float(t), device=device)  # noqa: E731
-            curves = dict(current=torch.stack([sample(current, "regress", ed, at(t), sigma, 1, feat=feat, cls=cls) for t in taus]),
+            curves = dict(current=torch.stack([predict(current, ed, at(t), sigma, feat=feat, cls=cls) for t in taus]),
                           rig=torch.from_numpy(np.stack([decode(numbers, float(t), fields, slots) for t in taus])).float().to(device),
                           phaseflow_tau0=phaseflow_fields(pf, d, 0.0, device, gen),
                           phaseflow_tau1=phaseflow_fields(pf, d, 1.0, device, gen),
                           krebs_mean=krebs_fields(kr, d, None, device))
             es_fields = {k: v[es] for k, v in curves.items()}
-            es_fields["current"] = sample(current, "regress", ed, at(tau_es), sigma, 1, feat=feat, cls=cls)
+            es_fields["current"] = predict(current, ed, at(tau_es), sigma, feat=feat, cls=cls)
             es_fields["rig"] = torch.from_numpy(decode(numbers, tau_es, fields, slots)).float().to(device)
             es_fields["krebs_mean"] = es_krebs(torch.cat([kr.simulate(c) for c in ed.split(8)]), d)
             for name, v in es_fields.items():

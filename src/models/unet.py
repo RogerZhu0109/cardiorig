@@ -1,10 +1,10 @@
 """
-Conditional U-Net u(w, t, ed, tau) -> (B, 2, H, W).
+Dense-field model: a U-Net that regresses the SVF (B, 2, H, W) of an ED slice at cardiac phase tau,
+in normalised units w = v / sigma.
 
-The noisy SVF w (2 ch) and the ED slice (1 ch) are concatenated at the input.
-Flow time t (sinusoidal) and cardiac phase tau (cyclic Fourier features, so
-tau = 0.98 sits next to tau = 0) are embedded, summed, and enter every residual
-block as a FiLM scale/shift.
+The phase enters as cyclic Fourier features (tau = 0.98 sits next to tau = 0) and modulates every
+residual block as a FiLM scale/shift. The network also has a 2-channel field input w and a scalar
+input t; both are zero in training and at inference.
 Optional (cond=True): frozen CineMA features of the ED stack, a per-slice (768, 12, 12) map
 added at the bottleneck and a global cls token added to the embedding; both projections are
 zero-initialised, so training starts from the unconditioned network.
@@ -86,3 +86,15 @@ class UNet(nn.Module):
                 h = self.unpool[i](F.interpolate(h, scale_factor=2, mode="nearest"))
             h = self.up[i](torch.cat([h, skips[i]], dim=1), e)
         return self.out(h)
+
+
+def loss(model: UNet, ed, tau, target, **cond):
+    """Mean squared error to the normalised registration field target (B, 2, H, W)."""
+    return F.mse_loss(model(torch.zeros_like(target), torch.zeros(len(target), device=target.device), ed, tau, **cond), target)
+
+
+@torch.no_grad()
+def predict(model: UNet, ed, tau, sigma: float, **cond):
+    """SVF (B, 2, H, W) in pixels."""
+    b, (h, w) = len(ed), ed.shape[-2:]
+    return sigma * model(torch.zeros(b, 2, h, w, device=ed.device), torch.zeros(b, device=ed.device), ed, tau, **cond)

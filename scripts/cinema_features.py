@@ -6,7 +6,7 @@ Our 128x128 @1.5 mm crop spans the same 192 mm field of view as CineMA's 192x192
 so it is resampled in-plane to 192x192 and zero-padded to 16 slices (slice spacing unchanged).
 Out, one file per patient, out_dir/{training,testing}/patientXXX.npz:
     feat (Z, 768, 12, 12) f16, indexed (slice, channel, y, x) like the cache images;  cls (768,) f16
-Runs in the separate env .venv-cinema (CineMA pins conflict with the main env).
+Runs in a separate environment, .venv-cinema, with CineMA installed (github.com/mathpluscode/CineMA).
 Usage: .venv-cinema/bin/python scripts/cinema_features.py --data_root data/raw/ACDC --out_dir data/processed/acdc_cinema
        .venv-cinema/bin/python scripts/cinema_features.py --cache data/processed/straus --out_dir data/processed/straus/cinema
 """

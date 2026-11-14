@@ -1,7 +1,7 @@
 """
-Cross-validation comparison of the rig model and the current model on held-out patients.
-Every patient is scored once, by the models of the fold that held it out. ES labels only score.
-Writes cv.csv (one row per patient and method) and rig_predictions.npz (for calibration).
+Cross-validation comparison of the rig model and the dense-field model ("current") on held-out
+patients. Every patient is scored once, by the models of the fold that held it out. ES labels only
+score. Writes cv.csv (one row per patient and method) and rig_predictions.npz (held-out rig parameters).
 Usage: python scripts/evaluate_cv.py --runs checkpoints/cv --features data/processed/acdc_cinema
 """
 import argparse
@@ -17,9 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.train_rig import collate, stack_inputs  # noqa: E402
 from src.data.cache import load  # noqa: E402
 from src.evaluation import es_inputs, score  # noqa: E402
-from src.models.flow import sample  # noqa: E402
 from src.models.rig_net import RigNet  # noqa: E402
-from src.models.unet import UNet  # noqa: E402
+from src.models.unet import UNet, predict  # noqa: E402
 from src.rig import decode, fit_compact, patient_fields  # noqa: E402
 from src.utils.metrics import STRUCTURES  # noqa: E402
 
@@ -58,7 +57,7 @@ def evaluate(args) -> tuple[pd.DataFrame, dict]:
             numbers, spread = predict_rig(rig, mean, std, d, args.device, fields, slots)
             with torch.no_grad():
                 ed, tau, cond = es_inputs(d, args.device)
-                v_current = sample(current, "regress", ed, tau, sigma, 1, **cond)
+                v_current = predict(current, ed, tau, sigma, **cond)
             teacher = d["svf"][int(d["es"])].astype(np.float32)
             fields_by_method = dict(identity=torch.zeros_like(v_current), teacher=torch.from_numpy(teacher),
                                     ceiling=torch.from_numpy(decode(target, tau_es, fields, slots)), current=v_current,

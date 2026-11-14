@@ -1,5 +1,5 @@
 """
-Read-out test (pre-registered in EXPERIMENTS.md, "Read-out test"): (A) segment wall motion read straight from
+Read-out of the rig parameters: (A) segment wall motion read straight from
 the rig numbers against the same measurement from the ED and ES labels; (B) a linear classifier of the disease
 group on the rig numbers against a spline code fitted the same way. 100 training patients, nothing is trained
 beyond the logistic regression.

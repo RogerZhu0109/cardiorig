@@ -1,16 +1,12 @@
 """
-Teacher registration: per-pair SVF optimisation, ED slice -> every frame.
+Dense registration ("teacher"): per-pair SVF optimisation, ED slice -> every frame.
 
     min_v  -LNCC(ED o exp(v/2), I_t o exp(-v/2)) + lam * ||grad v||^2
 
-Symmetric (midpoint) objective as in SyN / symmetric log-demons; it beat the
-one-sided form by ~0.02 ES Dice on the tuning set.  A 21-px LNCC window (vs 9)
-lets the homogeneous blood pool see the endocardial border: ES LV contraction
-captured rose from 72% to 78% (HCM 61% -> 78%) at equal or better Dice.  exp(v) still maps ED onto
-I_t.  v is optimised directly (no network) coarse-to-fine with Adam, all pairs
-of a patient in one batch.  Pairs are independent: each v only enters its own loss
-term.  exp() is the same scaling-and-squaring used by the generator
-(src/utils/svf.py), so the saved v are exact targets for flow matching.
+Symmetric (midpoint) objective as in SyN; exp(v) maps ED onto I_t. v is optimised directly
+(no network) coarse-to-fine with Adam, all pairs of a patient in one batch. Pairs are
+independent: each v only enters its own loss term. exp() is the scaling and squaring of
+src/utils/svf.py, which the models also use.
 """
 from __future__ import annotations
 
@@ -62,7 +58,6 @@ def register(
         v_scale = s
         v = v.detach().requires_grad_(True)
         opt = torch.optim.Adam([v], lr=lr)
-        # Adam steps ~lr regardless of gradient size; decay so v settles instead of jittering.
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, iters)
         for _ in range(iters):
             sim = lncc(warp(m, integrate(v / 2)), warp(f, integrate(-v / 2)), win)

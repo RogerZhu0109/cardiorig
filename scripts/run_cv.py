@@ -1,8 +1,8 @@
 """
-Train cross-validation runs in parallel on one GPU, syncing checkpoints to a private Hugging Face
-repo so a reclaimed Colab VM can resume. Every minute it prints one status line with progress, ETA
-and any failed or stalled run, which also keeps the kernel alive.
-Usage: python scripts/run_cv.py --model rig --folds 0 1 2 3 4 --members 1 2 --cache /content/cache --features /content/cache/cinema
+Train several runs in parallel on one GPU. Every minute it prints one status line with progress,
+ETA and any failed or stalled run. With --repo, checkpoints are synced to a Hugging Face repo so
+that an interrupted machine can resume.
+Usage: python scripts/run_cv.py --model rig --folds 0 1 2 3 4 --members 1 2 --cache data/processed/acdc --features data/processed/acdc_cinema
 Final models: --folds -1 --members 0 1 2 3 4 --folder final (seeds 0-4 on all 100 training patients).
 Ablations: --model rig --variant no_cinema --folder ablations (runs are named rig_no_cinema_m{member}_f{fold}).
 """
@@ -16,7 +16,6 @@ from pathlib import Path
 
 from huggingface_hub import HfApi, snapshot_download
 
-REPO = "RZ0109/stacom-runs"
 SYNC_SECONDS = 1200
 STALL_SECONDS = 900
 ITERS = dict(rig=20000, current=40000, krebs=150000, phaseflow=37500)  # phaseflow's real length is read from its log
@@ -36,13 +35,13 @@ def command(args, fold: int, member: int, out: Path) -> list[str]:
         common += ["--variant", args.variant]
     if args.model in ("rig", "krebs", "phaseflow"):
         return [sys.executable, f"scripts/train_{args.model}.py", *common]
-    return [sys.executable, "scripts/train.py", "--objective", "regress", "--augment", "--iters", "40000", *common]
+    return [sys.executable, "scripts/train.py", "--augment", "--iters", "40000", *common]
 
 
-def sync(api: HfApi, out: Path, folder: str) -> None:
-    for f in [*out.glob("*.pt"), out / "log.txt"]:
+def sync(api: HfApi, out: Path, folder: str, repo: str | None) -> None:
+    for f in [*out.glob("*.pt"), out / "log.txt"] if repo else []:
         if f.name != "tmp.pt":
-            api.upload_file(path_or_fileobj=str(f), path_in_repo=f"{folder}/{out.name}/{f.name}", repo_id=REPO)
+            api.upload_file(path_or_fileobj=str(f), path_in_repo=f"{folder}/{out.name}/{f.name}", repo_id=repo)
 
 
 def latest(out: Path, total: int) -> tuple[str, int, int, float]:
@@ -84,7 +83,8 @@ def main(args):
     root = Path(args.root)
     label = f"{args.model}_{args.variant}" if args.variant else args.model
     names = [run_name(label, m, k) for m in args.members for k in args.folds]
-    snapshot_download(REPO, allow_patterns=[f"{args.folder}/{n}/*" for n in names], local_dir=root)
+    if args.repo:
+        snapshot_download(args.repo, allow_patterns=[f"{args.folder}/{n}/*" for n in names], local_dir=root)
     procs, env = {}, dict(os.environ, OMP_NUM_THREADS="2")
     for m in args.members:
         for fold in args.folds:
@@ -98,10 +98,10 @@ def main(args):
         print(status(procs, seen, ITERS[args.model]), flush=True)
         if time.time() - last_sync > SYNC_SECONDS:
             for out in procs:
-                sync(api, out, args.folder)
+                sync(api, out, args.folder, args.repo)
             last_sync = time.time()
     for out in procs:
-        sync(api, out, args.folder)
+        sync(api, out, args.folder, args.repo)
     failed = [out.name for out, (p, _) in procs.items() if p.returncode]
     for out in procs:
         if out.name in failed:
@@ -118,6 +118,7 @@ if __name__ == "__main__":
     p.add_argument("--cache", required=True)
     p.add_argument("--features", required=True)
     p.add_argument("--variant", help="rig ablation (train_rig.py --variant)")
-    p.add_argument("--folder", default="cv_ensemble", help="folder in the Hugging Face repo")
-    p.add_argument("--root", default="/content/runs")
+    p.add_argument("--folder", default="cv", help="folder of the runs under --root")
+    p.add_argument("--root", default="checkpoints")
+    p.add_argument("--repo", help="Hugging Face repo to sync checkpoints with")
     main(p.parse_args())

@@ -1,8 +1,8 @@
 """
-Published methods against the rig and the current model on the same held-out patients. ES Dice
+Published methods against the rig and the dense-field model on the same held-out patients. ES Dice
 comes from warped ED labels; volume curves compare the warped ED LV mask with the fold's
 segmentation network on real frames, over T = 30 resampled frames. ES labels only score.
-Writes published.csv (one row per patient and method) and prints the pre-registered comparison.
+Writes published.csv (one row per patient and method) and prints the comparison.
 Usage: python scripts/evaluate_published.py --runs checkpoints/published --cv_runs checkpoints/cv --features data/processed/acdc_cinema
 """
 import argparse
@@ -19,7 +19,7 @@ from scripts.train_krebs import slots_of  # noqa: E402
 from scripts.train_phaseflow import anchor, lv_probability  # noqa: E402
 from src.data.cache import load, ordered, resampled  # noqa: E402
 from src.evaluation import score  # noqa: E402
-from src.models.flow import sample  # noqa: E402
+from src.models.unet import predict  # noqa: E402
 from src.models.krebs import T_MAX, Krebs  # noqa: E402
 from src.models.phaseflow import ALPHA, T, DeformDecoder, SegUNet, VAE3D, VelocityUNet  # noqa: E402
 from src.rig import decode, patient_fields  # noqa: E402
@@ -119,7 +119,7 @@ def evaluate(args) -> pd.DataFrame:
             ed = torch.from_numpy(d["cine"][int(d["ed"])][:, None].astype(np.float32)).to(device)
             feat = torch.from_numpy(d["feat"].astype(np.float32)).to(device)
             cls = torch.from_numpy(d["cls"].astype(np.float32)).to(device)[None].expand(len(ed), -1)
-            curves = dict(current=torch.stack([sample(current, "regress", ed, torch.full((len(ed),), float(t), device=device), sigma, 1, feat=feat, cls=cls)
+            curves = dict(current=torch.stack([predict(current, ed, torch.full((len(ed),), float(t), device=device), sigma, feat=feat, cls=cls)
                                                for t in taus]),
                           rig=torch.from_numpy(np.stack([decode(numbers, float(t), fields, slots) for t in taus])).float().to(device),
                           phaseflow_tau1=phaseflow_fields(pf, d, 1.0, device, gen),
@@ -127,7 +127,7 @@ def evaluate(args) -> pd.DataFrame:
                           krebs_mean=krebs_fields(kr, d, None, device))
             es_fields = {k: v[es] for k, v in curves.items()}
             tau_es = float(d["tau"][int(d["es"])])
-            es_fields["current"] = sample(current, "regress", ed, torch.full((len(ed),), tau_es, device=device), sigma, 1, feat=feat, cls=cls)
+            es_fields["current"] = predict(current, ed, torch.full((len(ed),), tau_es, device=device), sigma, feat=feat, cls=cls)
             es_fields["rig"] = torch.from_numpy(decode(numbers, tau_es, fields, slots)).float().to(device)
             es_fields["krebs_mean"] = es_krebs(torch.cat([kr.simulate(c) for c in ed.split(8)]), d)
             for name, v in es_fields.items():

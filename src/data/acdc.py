@@ -1,8 +1,7 @@
 """
 ACDC cine-CMR loader.
 
-Produces heart-centred 2D short-axis stacks for phase-conditioned deformation
-generation.  tau is the ED-relative, cyclic, normalized cardiac phase:
+Produces heart-centred 2D short-axis stacks. tau is the ED-relative, cyclic, normalized cardiac phase:
     tau = ((t - ED) mod N) / N,  ED -> 0.0, ES -> ~0.3-0.45.
 Per-patient files (data/raw/ACDC/{training,testing}/patientXXX/):
     Info.cfg                      ED / ES (1-based frame index), Group, Height, Weight, NbFrame
@@ -20,7 +19,7 @@ from scipy.ndimage import zoom
 
 LABELS = {0: "background", 1: "RV", 2: "MYO", 3: "LV"}
 GROUPS = ("NOR", "MINF", "DCM", "HCM", "RV")
-# Teacher hyper-parameter tuning set: first 4 training patients of each group
+# Registration hyper-parameter tuning set: first 4 training patients of each group
 # (ACDC training is ordered in blocks of 20: DCM, HCM, MINF, NOR, RV).
 TUNE_PATIENTS = [f"patient{b + i:03d}" for b in (1, 21, 41, 61, 81) for i in range(4)]
 
@@ -77,7 +76,6 @@ class ACDCPatient:
         )
         assert self._img.shape[3] == self.info.n_frames, (self.pid, self._img.shape, cfg)
 
-    # ---- raw access -------------------------------------------------------
     @property
     def shape(self):
         return self._img.shape  # (X, Y, Z, T)
@@ -97,7 +95,6 @@ class ACDCPatient:
             return None
         return np.asarray(nib.load(p).dataobj, dtype=np.uint8).transpose(2, 1, 0)
 
-    # ---- preprocessing ----------------------------------------------------
     def resample_inplane(self, vol: np.ndarray, target_mm: float = 1.5, order: int = 1) -> np.ndarray:
         """Resample (Z, Y, X) or (..., Y, X) to isotropic in-plane spacing."""
         sx, sy, _ = self.info.spacing

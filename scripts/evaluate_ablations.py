@@ -1,9 +1,8 @@
 """
-Ablations of the rig model on the 5 cross-validation folds (pre-registered in EXPERIMENTS.md,
-"Ablations of the rig model"). Every held-out patient is scored by the 3 members of each variant
+Ablations of the rig model on the 5 cross-validation folds. Every held-out patient is scored by the 3 members of each variant
 trained on the fold that held it out. Writes ablations.csv (one row per patient, variant and
 member) and prints each variant against the full model with a two-level bootstrap.
-Usage: python scripts/evaluate_ablations.py --runs /content/runs/ablations --full /content/runs/cv --features /content/cache/cinema
+Usage: python scripts/evaluate_ablations.py --runs checkpoints/ablations --full checkpoints/cv --features data/processed/acdc_cinema
        python scripts/evaluate_ablations.py --report outputs/ablations/ablations.csv   (re-print from the CSV)
 """
 import argparse
