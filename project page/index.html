@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardioRig: An Anatomical Rig for Predicting Cardiac Motion from a Single Cine MRI Frame</title>
+<meta name="description" content="CardioRig predicts the motion of the heart over one beat from a single cine MRI frame, with 232 parameters that each belong to a named motion.">
+<link rel="stylesheet" href="assets/katex/katex.min.css">
+<style>
+  :root{
+    --ink:#111111; --ink-2:#55555a; --rule:#e5e5e8; --bg:#ffffff; --soft:#fafafb;
+    --accent:#0F4D92;
+    --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif;
+    line-height:1.6; font-size:17px;
+  }
+  .wrap{max-width:780px; margin:0 auto; padding:0 20px 80px;}
+  header{padding:56px 0 8px; text-align:center;}
+  h1{font-size:2.3em; line-height:1.15; margin:0 0 6px; letter-spacing:-0.01em;}
+  .subtitle{font-size:1.25em; line-height:1.35; color:var(--ink); margin:0 auto 16px; max-width:640px;}
+  .authors{color:var(--ink-2); margin:0 0 14px; font-size:0.95em;}
+  .links{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin:0 0 8px;}
+  .links a, .links span{
+    display:inline-block; padding:5px 14px; border:1px solid var(--rule); border-radius:999px;
+    font-size:0.9em; text-decoration:none; color:var(--ink);
+  }
+  .links span{color:var(--ink-2);}
+  .links a:hover{border-color:var(--accent); color:var(--accent);}
+  h2{font-size:1.5em; margin:2.6em 0 0.5em; line-height:1.25;}
+  h3{font-size:1.15em; margin:2.4em 0 0.4em; line-height:1.3;}
+  h3 .step{color:var(--accent); font-weight:700; margin-right:6px;}
+  p{margin:0 0 1em;}
+  a{color:var(--accent);}
+  .lead{font-size:1.08em;}
+  figure{margin:1.6em 0;}
+  figure img{max-width:100%; height:auto; display:block; margin:0 auto;}
+  figcaption, .caption{font-size:0.88em; color:var(--ink-2); margin-top:8px; line-height:1.45;}
+  dl.terms{margin:1em 0; padding:14px 18px; background:var(--soft); border:1px solid var(--rule); border-radius:8px; font-size:0.94em;}
+  dl.terms dt{font-weight:600; float:left; clear:left; margin-right:6px;}
+  dl.terms dd{margin:0 0 6px;}
+  dl.terms dd:last-child{margin-bottom:0;}
+  ol.chain{list-style:none; padding:0; margin:1.2em 0; display:flex; flex-wrap:wrap; gap:6px 4px; align-items:center; font-size:0.92em;}
+  ol.chain li{padding:6px 10px; border:1px solid var(--rule); border-radius:6px; background:var(--soft);}
+  ol.chain li.arrow{border:none; background:none; padding:0 2px; color:var(--ink-2);}
+  .eq{margin:1.1em 0; text-align:center; overflow-x:auto; overflow-y:hidden;}
+  .eq .katex-display{margin:0;}
+
+  .widget{border:1px solid var(--rule); border-radius:10px; padding:18px; background:var(--soft); margin:1.4em 0 0.6em;}
+  .row{display:flex; gap:18px; flex-wrap:wrap; justify-content:center; align-items:flex-start;}
+  .panel{min-width:0;}
+  .panel-title{font-weight:600; font-size:0.9em; margin-bottom:6px;}
+  .panel-title.gen{color:var(--accent);}
+  canvas{display:block; width:100%; height:auto; border-radius:4px; touch-action:pan-y;}
+  .controls{display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:14px; font-size:0.9em; color:var(--ink-2);}
+  .controls label{display:inline-flex; align-items:center; gap:8px;}
+  .play{
+    flex:0 0 auto; width:38px; height:38px; border-radius:50%; border:1px solid var(--rule); background:#fff;
+    color:var(--accent); font-size:13px; cursor:pointer; padding:0; line-height:1;
+  }
+  .play:hover{background:#f1f5fa;}
+  input[type=range]{accent-color:var(--accent); width:220px; max-width:100%;}
+  output{font-variant-numeric:tabular-nums; min-width:2.6em; display:inline-block; color:var(--ink);}
+  .readout{font-size:0.92em; color:var(--ink-2); margin-top:12px; text-align:center; min-height:1.5em;}
+  .readout b{color:var(--ink); font-variant-numeric:tabular-nums;}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:0.9em; color:var(--ink-2); margin:4px 0;}
+  .chips .label{min-width:76px;}
+  button.chip, select{
+    font:inherit; font-size:0.95em; padding:4px 11px; border:1px solid var(--rule); border-radius:999px; background:#fff;
+    color:var(--ink); cursor:pointer;
+  }
+  select{border-radius:6px; padding:4px 8px;}
+  button.chip[aria-pressed=true]{border-color:var(--accent); color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent);}
+  button.chip .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px;}
+  .factors{display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:8px;}
+  .factors .cap{font-size:0.8em; color:var(--ink-2); line-height:1.35; margin-top:4px;}
+  .weights{display:grid; grid-template-columns:auto 1fr auto; gap:6px 10px; align-items:center; font-size:0.9em; margin-top:10px;}
+  .weights input[type=range]{width:100%;}
+  .weights .sw{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px;}
+  .try{font-size:0.92em; color:var(--ink-2); margin:0.4em 0 1em;}
+  .try b{color:var(--ink);}
+  table.res{border-collapse:collapse; width:100%; margin:1.2em 0; font-size:0.94em;}
+  table.res th, table.res td{border-bottom:1px solid var(--rule); padding:8px 10px; text-align:right; font-variant-numeric:tabular-nums;}
+  table.res th:first-child, table.res td:first-child{text-align:left;}
+  table.res thead th{font-weight:600; border-bottom:2px solid var(--ink);}
+  table.res tr.ours td{font-weight:600;}
+  table.res .note{color:var(--ink-2); font-weight:400; font-size:0.9em;}
+  .scroll{overflow-x:auto;}
+  pre.cite{background:var(--soft); border:1px solid var(--rule); border-radius:6px; padding:14px 16px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:0.82em; white-space:pre-wrap; overflow-x:auto;}
+  footer{font-size:0.86em; color:var(--ink-2); margin-top:3em; border-top:1px solid var(--rule); padding-top:1.2em;}
+  @media (max-width:600px){
+    body{font-size:16px;}
+    header{padding-top:36px;}
+    h1{font-size:1.9em;}
+    .widget{padding:12px; margin-left:-8px; margin-right:-8px;}
+    .factors{gap:6px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>CardioRig</h1>
+  <p class="subtitle">An Anatomical Rig for Predicting Cardiac Motion from a Single Cine MRI Frame</p>
+  <p class="authors">Roger Zhu</p>
+  <div class="links">
+    <span>Paper (coming)</span>
+    <span>Code (coming)</span>
+    <a href="#cite">BibTeX</a>
+  </div>
+</header>
+
+<p class="lead">A cine MRI films a slice of the heart over one heartbeat. CardioRig takes the first frame of such a film and predicts the rest of the beat. It describes the motion with 232 numbers, and each number belongs to a named motion of one part of the heart.</p>
+
+<figure>
+  <img src="assets/cycle_normal.gif" width="620" height="342" alt="Animation of a beating heart in cine MRI. Left: the real recording. Right: the cycle generated by CardioRig from the first frame.">
+  <figcaption>Left: the real cine of a patient from the ACDC test set. Right: the beat that CardioRig generates from the first frame alone. The contours are the outlines drawn on the first frame, moved by the predicted motion: right ventricle (pink), outer boundary of the left-ventricular wall (green) and left-ventricular cavity (yellow).</figcaption>
+</figure>
+
+<dl class="terms">
+  <dt>Short-axis slice.</dt><dd>A cross-section of the heart. The left ventricle (LV) appears as a ring of muscle, the LV wall, around a bright cavity filled with blood. The right ventricle (RV) lies next to it.</dd>
+  <dt>End-diastole (ED).</dt><dd>The moment when the heart is relaxed and full. It is the first frame of the film.</dd>
+  <dt>End-systole (ES).</dt><dd>The moment when the heart is most contracted.</dd>
+  <dt>Phase $\tau$.</dt><dd>The fraction of the heartbeat that has passed since ED. It runs from 0 to 1.</dd>
+</dl>
+
+<h2>Summary</h2>
+<p>Cardiologists describe the motion of the heart segment by segment. Methods that predict a heartbeat from one frame output a dense field, with one arrow per pixel and no link to the segments. CardioRig describes the same motion with 232 parameters. Each parameter belongs to a named motion, such as the inward motion of one wall segment. A fixed formula turns the parameters into a velocity field, and the velocity field moves the first frame. A neural network predicts the parameters from the first frame.</p>
+<p>On the ACDC test set, the network is more accurate than our reimplementations of two published methods, and it is within 0.01 Dice of our own network that predicts a dense field. These results hold without retraining on M&amp;Ms, a dataset from four scanner vendors.</p>
+
+<h2>How it works</h2>
+<p>A generated frame is the result of a chain of five steps. The sections below go through the chain from its end to its start, because the last steps are the easiest to picture. Every figure computes its images in your browser, on one slice of one patient, so you can change the inputs and see what each formula does.</p>
+<ol class="chain" aria-label="The chain from the first frame to a generated frame">
+  <li>first frame</li><li class="arrow">&rarr;</li>
+  <li>232 parameters</li><li class="arrow">&rarr;</li>
+  <li>velocity field</li><li class="arrow">&rarr;</li>
+  <li>deformation</li><li class="arrow">&rarr;</li>
+  <li>generated frame</li>
+</ol>
+
+<!-- ------------------------------------------------------------------ 1 -->
+<h3><span class="step">1</span>A generated frame is the first frame with its pixels moved</h3>
+<p>The method does not paint new pictures of the heart. It computes a deformation $\phi_\tau$, a rule that says for every pixel $x$ of the new frame which point of the first frame it shows. The generated frame at phase $\tau$ is</p>
+<div class="eq">$$\hat I_\tau(x) = I_\mathrm{ED}\big(\phi_\tau(x)\big).$$</div>
+<p>Read the formula from the inside out: take a pixel $x$, look up the point $\phi_\tau(x)$ in the first frame $I_\mathrm{ED}$, and copy its brightness. When that point falls between pixels, the four nearest pixels are averaged. Since every brightness comes from the first frame, a generated frame only contains anatomy that the first frame shows.</p>
+<div class="widget" id="warpDemo">
+  <div class="row">
+    <div class="panel"><div class="panel-title">First frame $I_\mathrm{ED}$</div><canvas class="left"></canvas></div>
+    <div class="panel"><div class="panel-title gen">Generated frame $\hat I_\tau$</div><canvas class="right"></canvas></div>
+  </div>
+  <div class="controls">
+    <button class="play" type="button"></button>
+    <label>Phase $\tau$ <input class="tau" type="range" min="0" max="0.999" step="0.001" value="0"></label><output class="tauval"></output>
+    <label><input class="arrows" type="checkbox" checked> show the motion as arrows</label>
+  </div>
+  <div class="readout"></div>
+</div>
+<p class="try"><b>Try it.</b> Move the pointer over the generated frame. The orange circle marks a pixel of the generated frame, and the circle on the left marks the point of the first frame that it copies. The yellow arrows show how far the tissue has moved since the first frame.</p>
+
+<!-- ------------------------------------------------------------------ 2 -->
+<h3><span class="step">2</span>From a velocity field to a deformation</h3>
+<p>The rig does not output the deformation itself. It outputs a velocity field $v$: one arrow per pixel that says in which direction the tissue at that place moves, and how fast. The deformation is what you get by following the arrows for one unit of time. Mathematicians write this as an exponential,</p>
+<div class="eq">$$\phi = \exp(v).$$</div>
+<p>The simplest way to follow the arrows is one large step, $x \mapsto x + v(x)$. With strong motion this fails: two neighbouring points can jump past each other, and the grid folds over itself. Real tissue cannot do that. With many small steps the points move a little, read the arrow at their new place, and move again, and a smooth field then never folds.</p>
+<p>Many small steps sound expensive, but doubling makes them cheap. Start with one small step of size $1/2^K$. Applying it twice gives a step of twice the size, and applying that result twice doubles it again:</p>
+<div class="eq">$$\phi_{1/2^K}(x) = x + \frac{v(x)}{2^K}, \qquad \phi_{2t} = \phi_t \circ \phi_t .$$</div>
+<p>After $K$ doublings the step has size 1. We use $K = 7$, which equals 128 small steps at the cost of 7. The method is called scaling and squaring.</p>
+<div class="widget" id="expDemo">
+  <div class="row">
+    <div class="panel"><div class="panel-title">Velocity field $v$</div><canvas class="left"></canvas></div>
+    <div class="panel"><div class="panel-title gen">Where the grid ends up</div><canvas class="right"></canvas></div>
+  </div>
+  <div class="controls">
+    <label>Doublings $K$ <input class="k" type="range" min="0" max="7" step="1" value="0"></label><output class="kval"></output>
+    <label>Strength of the field <input class="strength" type="range" min="0" max="2.4" step="0.05" value="2"></label>
+  </div>
+  <div class="readout"></div>
+</div>
+<p class="try"><b>Try it.</b> The field on the left pulls a square grid towards its centre and turns it. With $K = 0$ the grid takes one large step and folds in the red area. Raise $K$ and the fold disappears.</p>
+
+<!-- ------------------------------------------------------------------ 3 -->
+<h3><span class="step">3</span>Coordinates attached to the heart</h3>
+<p>To give a velocity field anatomical meaning, the rig first measures every pixel in coordinates of the patient's own heart. The origin is the centre of the LV cavity. A pixel is located by its distance $r$ from that centre and its angle $\theta$, where $\theta = 0$ points towards the RV. Along each direction, the outlines of the first frame give the radius of the inner boundary of the wall, $r_\mathrm{in}(\theta)$, and of the outer boundary, $r_\mathrm{out}(\theta)$. The depth of a pixel through the wall is</p>
+<div class="eq">$$d = \frac{r - r_\mathrm{in}}{r_\mathrm{out} - r_\mathrm{in}}, \qquad \text{limited to the range from 0 to 1,}$$</div>
+<p>so $d = 0$ on the inner boundary and $d = 1$ on the outer one. The wall is then cut into segments by angle: six in a slice near the base or the middle of the heart and four near the tip, 16 in total. These are the segments that cardiologists use in their reports.</p>
+<div class="widget" id="coordsDemo">
+  <div class="row">
+    <div class="panel"><canvas></canvas></div>
+  </div>
+  <div class="readout"></div>
+</div>
+<p class="try"><b>Try it.</b> Move the pointer over the image to read the coordinates of any point. The coloured band shows the six segments of this slice.</p>
+
+<!-- ------------------------------------------------------------------ 4 -->
+<h3><span class="step">4</span>Each segment has three motions</h3>
+<p>For every wall segment $s$, the rig has three fixed velocity fields, called basis fields. One moves the inner boundary towards or away from the centre, one does the same for the outer boundary, and one slides the wall along its own direction:</p>
+<div class="eq">$$B_s^\mathrm{in} = h_s\, q\, (1-d)\, e_r, \qquad B_s^\mathrm{out} = h_s\, d\, g\, e_r, \qquad B_s^\mathrm{t} = h_s\, q\, g\, e_\theta .$$</div>
+<p>Each field is an arrow direction multiplied by a few factors between 0 and 1 that say where the field is active. The direction $e_r$ points along the radius and $e_\theta$ points around the ring. The factor $h_s$ selects the segment: it is 1 at the centre of segment $s$ and falls to 0 at the centres of its two neighbours, so neighbouring fields blend without a jump. The factor $q$ brings the field to zero at the centre of the cavity, and $g$ makes it fade outside the heart. The depth $d$ ties a field to one boundary: $1 - d$ is 1 on the inner boundary and 0 on the outer one.</p>
+<p>The RV has four sectors with two motions each, and two more fields shift the whole heart in the image. This gives $16 \times 3 + 4 \times 2 + 2 = 58$ motions for a patient. All of them are computed from the outlines of the first frame, and nothing in them is learned.</p>
+<div class="widget" id="basisDemo">
+  <div class="chips seg"><span class="label">Segment</span></div>
+  <div class="chips mot"><span class="label">Motion</span></div>
+  <div class="row" style="margin-top:12px;">
+    <div class="panel" style="flex:1 1 300px; max-width:340px;"><div class="panel-title gen">Basis field <span class="fname"></span></div><canvas class="main"></canvas></div>
+    <div class="panel" style="flex:1 1 300px; max-width:360px;">
+      <div class="panel-title">Its factors</div>
+      <div class="factors">
+        <div><canvas class="f0"></canvas><div class="cap c0"></div></div>
+        <div><canvas class="f1"></canvas><div class="cap c1"></div></div>
+        <div><canvas class="f2"></canvas><div class="cap c2"></div></div>
+      </div>
+      <div class="caption">Dark blue is 1 and white is 0. The field is the product of the three factors, times the arrow direction.</div>
+    </div>
+  </div>
+</div>
+<p class="try"><b>Try it.</b> Pick a segment and a motion. The arrows show how tissue moves when the parameter of that motion is positive.</p>
+
+<!-- ------------------------------------------------------------------ 5 -->
+<h3><span class="step">5</span>Four curves describe a motion over the heartbeat</h3>
+<p>A basis field says where and in which direction tissue moves. How much it moves at each moment of the beat is given by a curve $c(\tau)$, built from four fixed curves:</p>
+<div class="eq">$$c(\tau) = \theta_1\,(1 - \cos 2\pi\tau) + \theta_2 \sin 2\pi\tau + \theta_3\,(1 - \cos 4\pi\tau) + \theta_4 \sin 4\pi\tau .$$</div>
+<p>The four weights $\theta_1, \dots, \theta_4$ are the parameters of the motion. All four curves are zero at $\tau = 0$ and return to zero at $\tau = 1$, so whatever the weights, the heart starts in the first frame and comes back to it at the end of the beat. The first curve rises once and falls once, which is one contraction per beat. The second is positive in the first half of the beat and negative in the second, so it moves the peak earlier or later. The last two repeat twice per beat and change the shape of the curve, for example a fast contraction followed by a slower filling.</p>
+<div class="widget" id="curvesDemo">
+  <div class="chips">
+    <span class="label">Apply to</span>
+    <select class="motion" aria-label="Motion">
+      <option value="0">inner boundary</option><option value="1">outer boundary</option><option value="2">tangential motion</option>
+    </select>
+    <span>of</span>
+    <select class="segment" aria-label="Segments">
+      <option value="-1">all six segments</option><option value="0">segment 1</option><option value="1">segment 2</option><option value="2">segment 3</option><option value="3">segment 4</option><option value="4">segment 5</option><option value="5">segment 6</option>
+    </select>
+  </div>
+  <div class="row" style="margin-top:10px;">
+    <div class="panel" style="flex:1 1 380px; max-width:440px;">
+      <div class="panel-title">The weighted curves and their sum $c(\tau)$ (black)</div>
+      <canvas class="chart"></canvas>
+      <div class="weights">
+        <span><span class="sw" style="background:var(--c1)"></span>$\theta_1$, with $1-\cos 2\pi\tau$</span><input type="range" class="w" data-j="0" min="-3" max="3" step="0.05" aria-label="Weight 1"><output></output>
+        <span><span class="sw" style="background:var(--c2)"></span>$\theta_2$, with $\sin 2\pi\tau$</span><input type="range" class="w" data-j="1" min="-3" max="3" step="0.05" aria-label="Weight 2"><output></output>
+        <span><span class="sw" style="background:var(--c3)"></span>$\theta_3$, with $1-\cos 4\pi\tau$</span><input type="range" class="w" data-j="2" min="-3" max="3" step="0.05" aria-label="Weight 3"><output></output>
+        <span><span class="sw" style="background:var(--c4)"></span>$\theta_4$, with $\sin 4\pi\tau$</span><input type="range" class="w" data-j="3" min="-3" max="3" step="0.05" aria-label="Weight 4"><output></output>
+      </div>
+    </div>
+    <div class="panel" style="flex:1 1 240px; max-width:280px;">
+      <div class="panel-title gen">The heart with these four numbers</div>
+      <canvas class="heart"></canvas>
+      <div class="caption">Dashed lines: the wall in the first frame. All other parameters are zero here.</div>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="play" type="button"></button>
+    <label>Phase $\tau$ <input class="tau" type="range" min="0" max="0.999" step="0.001" value="0"></label><output class="tauval"></output>
+  </div>
+  <div class="chips" style="justify-content:center; margin-top:10px;">
+    <button class="chip preset" type="button" data-p="one">One contraction</button>
+    <button class="chip preset" type="button" data-p="pred">Predicted for this patient</button>
+    <button class="chip preset" type="button" data-p="zero">All zero</button>
+  </div>
+</div>
+<p class="try"><b>Try it.</b> Start from "One contraction" and raise $\theta_2$: the heart contracts earlier in the beat. A negative $\theta_1$ makes the wall move outwards.</p>
+
+<!-- ------------------------------------------------------------------ 6 -->
+<h3><span class="step">6</span>The rig: 232 parameters make the whole beat</h3>
+<p>The velocity field at phase $\tau$ is the sum of all 58 basis fields, each multiplied by the value of its own curve:</p>
+<div class="eq">$$v_\tau = \sum_{k=1}^{58} c_k(\tau)\, B_k .$$</div>
+<p>With four weights per motion, $58 \times 4 = 232$ parameters describe the motion of all slices over the whole beat. A dense field needs two numbers per pixel in every slice and frame, more than 100,000 for a single frame of a stack. The steps of sections 2 and 1 then turn $v_\tau$ into a deformation and a generated frame.</p>
+<div class="widget" id="rigDemo">
+  <div class="panel-title">The 232 parameters of this patient: one column per motion, one row per curve</div>
+  <div class="scroll"><canvas class="strip" style="min-width:560px;"></canvas></div>
+  <div class="readout strip-read"></div>
+  <div class="row" style="margin-top:8px;">
+    <div class="panel" style="flex:1 1 220px; max-width:270px;"><div class="panel-title">Real frame</div><canvas class="real"></canvas></div>
+    <div class="panel" style="flex:1 1 220px; max-width:270px;"><div class="panel-title gen">Generated from the parameters</div><canvas class="gen"></canvas></div>
+  </div>
+  <div class="controls">
+    <button class="play" type="button"></button>
+    <label>Phase $\tau$ <input class="tau" type="range" min="0" max="0.999" step="0.001" value="0"></label><output class="tauval"></output>
+  </div>
+  <div class="chips" style="justify-content:center; margin-top:12px;">
+    <span>Parameters</span>
+    <button class="chip src" type="button" data-s="predicted" aria-pressed="true">predicted from the first frame</button>
+    <button class="chip src" type="button" data-s="fitted" aria-pressed="false">fitted to the real cine</button>
+  </div>
+  <div class="controls">
+    <label>Scale the inward motion of
+      <select class="editseg" aria-label="Segment to edit">
+        <option value="0">segment 1</option><option value="1">segment 2</option><option value="2">segment 3</option><option value="3" selected>segment 4</option><option value="4">segment 5</option><option value="5">segment 6</option>
+      </select>
+      by <input class="alpha" type="range" min="0" max="2" step="0.05" value="1" style="width:150px;"></label><output class="alphaval"></output>
+  </div>
+</div>
+<p class="try"><b>Try it.</b> Move the pointer over a column to see which motion it drives. Red is a positive weight and blue a negative one. Faded columns belong to slices nearer the base or the tip of the heart. The last slider multiplies the parameters of one segment: the motion changes in that segment and in the adjacent halves of its neighbours, and the rest of the heart stays as it was.</p>
+
+<!-- ------------------------------------------------------------------ 7 -->
+<h3><span class="step">7</span>A network predicts the parameters from the first frame</h3>
+<p>What remains is to find the 232 parameters when only the first frame is known. A neural network does this. It reads the slices of the first frame with their outlines and computes image features. The features are then averaged over 21 regions: one per wall segment, one per RV sector and one for the whole heart. Each region gives one token, a list of numbers that summarises what the image shows there. Three transformer layers let the tokens exchange information, and small output layers turn each token into the parameters of its own motions.</p>
+<p>For training, we need the parameters of real heartbeats. We obtain them from complete cines of 100 patients: a registration method measures the motion between the first frame and every other frame, and the rig is fitted to that motion. The network learns to predict the fitted parameters from the first frame.</p>
+<figure>
+  <img src="assets/method.png" width="1513" height="757" alt="Diagram of the rig and of the network that predicts its parameters." loading="lazy">
+  <figcaption>The method figure of the paper. (a) The rig: the parameters $\Theta$ weight the four time curves, the weighted basis fields sum to the velocity field $v_\tau$, and its exponential $\phi_\tau$ moves the first frame. (b) The network that predicts the parameters.</figcaption>
+</figure>
+
+<h2>Results</h2>
+<p>We score a prediction at end-systole, where the datasets provide reference outlines. The outlines of the first frame are moved with the predicted motion and compared with the reference by the Dice overlap, which is 1 for a perfect match.</p>
+<div class="scroll">
+<table class="res">
+  <thead><tr><th>Predicted from the first frame</th><th>ACDC test<br><span class="note">50 patients</span></th><th>M&amp;Ms<br><span class="note">345 subjects, no retraining</span></th></tr></thead>
+  <tbody>
+    <tr><td>No motion</td><td>0.580</td><td>0.526</td></tr>
+    <tr><td>Krebs et al. <span class="note">(our reimplementation)</span></td><td>0.646</td><td>0.609</td></tr>
+    <tr><td>PhaseFlow <span class="note">(our reimplementation)</span></td><td>0.695</td><td>0.658</td></tr>
+    <tr><td>Dense-field model <span class="note">(ours)</span></td><td>0.722</td><td>0.683</td></tr>
+    <tr class="ours"><td>CardioRig <span class="note">(ours)</span></td><td>0.715</td><td>0.680</td></tr>
+  </tbody>
+</table>
+</div>
+<p>CardioRig is more accurate than our reimplementations of the two published methods, by 0.020 and 0.069 Dice on ACDC. It is within 0.01 Dice of our dense-field model, a network that predicts one arrow per pixel without the restriction of the rig. The order of the methods is the same on M&amp;Ms, whose images come from four scanner vendors that the networks did not see in training.</p>
+<p>The rig itself describes motion with little loss. Fitted to simulated hearts with known motion (STRAUS), it reproduces that motion to about 1&nbsp;mm. The parameters also carry diagnostic information: a linear classifier on them assigns 77% of held-out patients to the correct one of five disease groups, where chance is 20%.</p>
+<figure>
+  <img src="assets/cycle_hcm.gif" width="604" height="334" alt="Animation of a heart with a thickened wall. Left: the real recording. Right: the cycle generated by CardioRig from the first frame." loading="lazy">
+  <figcaption>A patient with a thickened LV wall from the ACDC test set. This patient and the one at the top of the page have the median CardioRig Dice of their group.</figcaption>
+</figure>
+
+<h2>Limits</h2>
+<p>The rig models motion within the slice plane only. It is built from the outlines of the first frame, for which we used the reference outlines of the datasets. All predictors that we tested, including ours, contract the LV less than the real heart does: CardioRig recovers 72% of the change in LV area on ACDC.</p>
+
+<h2 id="cite">Citation</h2>
+<pre class="cite">@misc{zhu2026cardiorig,
+  title  = {An Anatomical Rig for Predicting Cardiac Motion from a Single Cine MRI Frame},
+  author = {Roger Zhu},
+  year   = {2026}
+}</pre>
+
+<footer>
+  Images on this page are from the ACDC dataset (Bernard et al., IEEE Transactions on Medical Imaging, 2018), used under CC BY-NC-SA 4.0. The interactive figures show one mid-ventricular slice of one ACDC training patient. Its predicted parameters come from a network that did not see this patient in training.
+</footer>
+
+</div>
+<script src="assets/data.js"></script>
+<script src="assets/katex/katex.min.js"></script>
+<script src="assets/katex/auto-render.min.js"></script>
+<script src="assets/page.js"></script>
+</body>
+</html>
