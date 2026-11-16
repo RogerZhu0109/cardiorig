@@ -16,6 +16,8 @@ CardioRig describes the motion of the whole cardiac cycle with 232 parameters, e
 A network predicts them from one end-diastolic frame, and a fixed decoder turns them into a diffeomorphic deformation of that frame.
 This repository contains the code for the paper: data preparation, training, evaluation and figures.
 
+Project page: https://rogerzhu0109.github.io/cardiorig/ 
+
 ## Setup
 
 Python 3.12, PyTorch 2.x.
@@ -76,17 +78,6 @@ python scripts/analyze_rig.py && python scripts/analyze_edits.py                
 ```
 
 Each script writes CSV files to `outputs/` and prints its tables. `figures/fig_*.py` draw the figures from these files.
-
-## Names in the code
-
-| Code | Paper |
-| --- | --- |
-| `rig` | CardioRig network |
-| `current` | dense-field model |
-| `teacher` | dense registration |
-| `ceiling` | rig fitted to dense registration |
-| `rig_registration` | rig fitted to the images |
-| `identity` | no motion |
 
 ## Tests
 
