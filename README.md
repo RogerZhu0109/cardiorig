@@ -92,3 +92,7 @@ python -m pytest tests
 ```
 
 The header of each script gives its usage and outputs.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). The datasets (ACDC, M&Ms, STRAUS) are not included and keep their own terms.
