@@ -1,6 +1,20 @@
+<div align="center">
+
 # CardioRig
 
-Code for "An Anatomical Rig for Predicting Cardiac Motion from a Single Cine MRI Frame".
+### An Anatomical Rig for Predicting Cardiac Motion from a Single Cine MRI Frame
+
+[![Project page](https://img.shields.io/badge/Project-Page-1f6feb)](https://rogerzhu0109.github.io/cardiorig/)
+
+</div>
+
+<p align="center">
+  <img src="project%20page/assets/method.png" width="90%" alt="CardioRig overview">
+</p>
+
+CardioRig describes the motion of the whole cardiac cycle with 232 parameters, each tied to a named segment of the heart.
+A network predicts them from one end-diastolic frame, and a fixed decoder turns them into a diffeomorphic deformation of that frame.
+This repository contains the code for the paper: data preparation, training, evaluation and figures.
 
 ## Setup
 
